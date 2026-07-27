@@ -51,11 +51,11 @@ A running list of everything planned, in progress, or deployed across the lab. E
 Copy this block when a new item needs more detail than a table row:
 
 ```
-### \[Component Name]
+### \\\\\\\[Component Name]
 - Status: Planned / In Progress / Deployed / Deprecated
 - System: Tower / Arch / Cloud VM / other
 - Drive: SSD / HDD / N/A
-- RAM cost: idle \~\_\_\_ , peak \~\_\_\_
+- RAM cost: idle \\\\\\\~\\\\\\\_\\\\\\\_\\\\\\\_ , peak \\\\\\\~\\\\\\\_\\\\\\\_\\\\\\\_
 - Purpose:
 - Notes:
 ```

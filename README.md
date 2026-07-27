@@ -147,7 +147,6 @@ Two known deviations from a flat estimate: swapping in DVWA instead of Juice Sho
 |-|-|-|
 |Used HDD (backup drive)|**Acquired**|\~$15–30|
 |SATA SSD, 240GB (OS/Docker drive)|**Pending**|\~$50–65|
-|2.5"→3.5" mounting bracket|Not yet purchased|\~$5–8|
 |Second used HDD (splits family share from backups)|Open decision|\~$15–30|
 |YubiKey Security Key|Open decision|\~$30|
 |Small UPS (protects an unattended box)|Open decision|\~$50–70|
