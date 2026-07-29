@@ -16,7 +16,6 @@
 
 ## How I built it
 
-*Architecture and tools, in enough detail that you (or someone reviewing your work) could reproduce it. Bullet the key steps rather than narrating every command — link out to configs/scripts in the repo instead of pasting them here.*
 
 * **Tools/stack: Ubuntu server, pi-hole**
 * **Key steps:**
