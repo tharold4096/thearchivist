@@ -4,18 +4,18 @@ Installing OPNsense 26.7 on a Dell Inspiron 530 took several failed attempts acr
 
 This is written up in full because the diagnostic path is more useful than the fix.
 
----
+\---
 
 ## The hardware
 
-| Component | Detail | Why it matters |
-|---|---|---|
-| Board | Intel G33 / ICH9 chipset (2008) | Predates USB 3.0 entirely |
-| Firmware | **Legacy BIOS only, no UEFI** | The core constraint |
-| RAM | 3GB DDR2 | Adequate for firewall-only duty |
-| Storage | 4x SATA II | Known-good, used to boot Ubuntu successfully |
+|Component|Detail|Why it matters|
+|-|-|-|
+|Board|Intel G33 / ICH9 chipset (2008)|Predates USB 3.0 entirely|
+|Firmware|**Legacy BIOS only, no UEFI**|The core constraint|
+|RAM|3GB DDR2|Adequate for firewall-only duty|
+|Storage|4x SATA II|Known-good, used to boot Ubuntu successfully|
 
----
+\---
 
 ## The symptom
 
@@ -23,7 +23,7 @@ Powering on with the OPNsense USB inserted produced a freeze at the Dell splash 
 
 Removing the drive restored normal behavior. A second, different USB drive carrying the same image produced identical results.
 
----
+\---
 
 ## Hypotheses, in the order they were tested
 
@@ -57,7 +57,7 @@ An Ubuntu Server installer USB was booted on the same machine, same port.
 
 *Result: worked perfectly, keyboard fully responsive.* This cleanly eliminated the USB ports, the controller, legacy USB support, and the attached SATA drive as causes. It also reframed the question: the problem isn't USB, it's **what's on the drive.**
 
----
+\---
 
 ## Root cause
 
@@ -67,37 +67,37 @@ A GPT layout on a legacy-BIOS-only board from 2008 is exactly the kind of thing 
 
 **And the keyboard symptom follows directly from this.** On ICH9-era boards, legacy USB keyboard support is emulated by the BIOS's own USB stack via SMI traps. When that stack hangs partway through device enumeration, HID emulation dies along with it. The dead keyboard was never a separate fault — it was the visible edge of the BIOS being stuck.
 
----
+\---
 
 ## Image format comparison
 
 OPNsense publishes several image types. They are not interchangeable, and the differences are load-bearing on old hardware.
 
-| Image | Format | Partition scheme | Result on this board |
-|---|---|---|---|
-| `vga` | Raw `.img` | **GPT** | Hangs at POST, kills USB keyboard |
-| `dvd` | ISO 9660 / El Torito | Optical | **Not USB-bootable** — no boot marker; both Rufus and Etcher correctly reject it |
-| `nano` | Raw `.img` | **MBR** | **Works** |
+|Image|Format|Partition scheme|Result on this board|
+|-|-|-|-|
+|`vga`|Raw `.img`|**GPT**|Hangs at POST, kills USB keyboard|
+|`dvd`|ISO 9660 / El Torito|Optical|**Not USB-bootable** — no boot marker; both Rufus and Etcher correctly reject it|
+|`nano`|Raw `.img`|**MBR**|**Works**|
 
 Two things worth knowing about the `dvd` image: it is intended for optical media, and the "not bootable" warnings from imaging tools are accurate rather than spurious. It was a dead end for USB installation, though burning it to an actual disc remained a viable fallback since the machine has an optical drive.
 
 The `nano` image turned out to be the right answer for reasons beyond partition scheme:
 
-- It is **preinstalled**, not an installer — write it and boot into a working system with no install step
-- It is **designed for flash media** with reduced write activity, which addresses USB wear by design rather than by configuration
-- Despite documentation implying serial console orientation, **it output to VGA without any special handling** on this hardware
+* It is **preinstalled**, not an installer — write it and boot into a working system with no install step
+* It is **designed for flash media** with reduced write activity, which addresses USB wear by design rather than by configuration
+* Despite documentation implying serial console orientation, **it output to VGA without any special handling** on this hardware
 
----
+\---
 
 ## Post-install hardening for USB boot media
 
 Flash media has finite write endurance, and a firewall writes continuously — state tables, DHCP leases, firewall logs, and eventually IDS alerts.
 
-- **RAM disks for `/tmp` and `/var`** redirect the frequent small writes to memory. Verify with `mount | grep -E '/tmp|/var'` and look for `md` devices. The nano image is built with this in mind.
-- **Tradeoff:** logs do not survive a reboot. Acceptable for a firewall; worth revisiting when an IDS starts generating real volume.
-- **Config backups matter more than usual.** The boot media is a consumable. An exported `config.xml` turns a dead USB stick into a ten-minute rebuild instead of an evening.
+* **RAM disks for `/tmp` and `/var`** redirect the frequent small writes to memory. Verify with `mount | grep -E '/tmp|/var'` and look for `md` devices. The nano image is built with this in mind.
+* **Tradeoff:** logs do not survive a reboot. Acceptable for a firewall; worth revisiting when an IDS starts generating real volume.
+* **Config backups matter more than usual.** The boot media is a consumable. An exported `config.xml` turns a dead USB stick into a ten-minute rebuild instead of an evening.
 
----
+\---
 
 ## What generalizes
 
@@ -109,7 +109,7 @@ Flash media has finite write endurance, and a firewall writes continuously — s
 
 **Read the tools' warnings as data.** Two independent imaging tools rejecting the same file was information, not an obstacle to route around.
 
----
+\---
 
 ## If this hardware had refused entirely
 
@@ -117,9 +117,12 @@ Worth recording, since it was researched during the process: if FreeBSD-based bo
 
 Linux-based alternatives would boot like the Ubuntu image did:
 
-| Option | Notes |
-|---|---|
-| **IPFire** | Closest equivalent in role — web UI, security-focused, runs comfortably in 2GB |
-| **VyOS** | CLI-driven, enterprise-credible configuration syntax, steeper learning curve |
-| **OpenWrt x86** | Lightweight and well-established, more router-oriented than firewall-oriented |
-| **Debian + nftables + Suricata** | Guaranteed to boot, most educational, no GUI |
+|Option|Notes|
+|-|-|
+|**IPFire**|Closest equivalent in role — web UI, security-focused, runs comfortably in 2GB|
+|**VyOS**|CLI-driven, enterprise-credible configuration syntax, steeper learning curve|
+|**OpenWrt x86**|Lightweight and well-established, more router-oriented than firewall-oriented|
+|**Debian + nftables + Suricata**|Guaranteed to boot, most educational, no GUI|
+
+
+

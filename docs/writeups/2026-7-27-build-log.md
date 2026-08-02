@@ -2,7 +2,7 @@
 
 Chronological record of work, grouped by session. Each entry notes what was decided, what was ruled out, and why.
 
----
+\---
 
 ## Session 1 — July 28, 2026
 
@@ -20,15 +20,15 @@ A secondary constraint reinforced it. Bridged VM networking would give each gues
 
 The chosen location was a home closet: out of the way, quiet-adjacent, no family involvement. It has no ethernet drop. Three options were considered.
 
-| Option | Verdict |
-|---|---|
-| Powerline (ethernet over electrical) | **Chosen** — no dependency on unknowns, two wall outlets |
-| MoCA (ethernet over coax) | Faster and more stable, but depends on the closet's coax jack being spliced onto the shared run |
-| Long cable run + switch | Best performance, but visible cabling — fails the "don't disrupt the household" constraint |
+|Option|Verdict|
+|-|-|
+|Powerline (ethernet over electrical)|**Chosen** — no dependency on unknowns, two wall outlets|
+|MoCA (ethernet over coax)|Faster and more stable, but depends on the closet's coax jack being spliced onto the shared run|
+|Long cable run + switch|Best performance, but visible cabling — fails the "don't disrupt the household" constraint|
 
 MoCA was the better performer on paper. It was rejected on risk: older cable installs frequently charged per room and left some jacks physically unconnected. That can't be resolved without testing, and a dead jack means the adapters are wasted. A free test using the existing cable modem as a signal source was designed but deprioritized once powerline proved sufficient for the workload.
 
-**AV2000 was chosen over AV1000.** Real-world powerline throughput is a large and unpredictable discount off the rated figure, driven by wiring quality. The ~$20 premium buys headroom against that unknown, not speed that will ever be used — the workload is log shipping, SSH, and container pulls, none of which approach even the low end of the range.
+**AV2000 was chosen over AV1000.** Real-world powerline throughput is a large and unpredictable discount off the rated figure, driven by wiring quality. The \~$20 premium buys headroom against that unknown, not speed that will ever be used — the workload is log shipping, SSH, and container pulls, none of which approach even the low end of the range.
 
 **A household objection was raised and worked through.** Concerns about powerline fell into three categories: neighbor data leakage over a shared transformer (mitigated — modern adapters use AES with deliberate pairing, and the scenario largely doesn't apply to detached homes), power draw (2–6W per adapter, negligible), and RF interference with amateur radio or AM reception. The third is the only one with real substance, and it was flagged as something to ask about directly rather than reassure past.
 
@@ -46,10 +46,10 @@ An HDD for bulk VM storage was accepted as a genuine stopgap, not a permanent an
 
 With the server taking over as the core node, the Dell Inspiron 530 needed a new job. Four directions were considered:
 
-- **Watchtower** — passive monitoring and detection, nothing depends on it
-- **Bastion** — hardened jump host and mesh VPN entry point
-- **Inline firewall** — sits in the traffic path, real blocking capability
-- **Tripwire** — deliberately expendable honeypot or canary host
+* **Watchtower** — passive monitoring and detection, nothing depends on it
+* **Bastion** — hardened jump host and mesh VPN entry point
+* **Inline firewall** — sits in the traffic path, real blocking capability
+* **Tripwire** — deliberately expendable honeypot or canary host
 
 **Inline firewall was chosen**, with the single-point-of-failure risk explicitly accepted. This reversed an earlier decision that the machine needed no NIC upgrade — inline operation requires two interfaces, so a PCIe NIC went back into the budget.
 
@@ -72,10 +72,11 @@ A separate finding along the way: a suspiciously high-capacity USB drive was tes
 OPNsense 26.7 came up on VGA console, contradicting the assumption that the nano image is serial-only.
 
 Configured in this session:
-- Root password changed from default
-- Single NIC (`em0`) assigned as LAN, static addressing
-- **DHCP server disabled** — critical, since OPNsense defaults to `192.168.1.1` with DHCP on, which would have collided with the family router's address and put a rogue DHCP server on their LAN
-- Web GUI reachable from a machine on the family network for staging
+
+* Root password changed from default
+* Single NIC (`em0`) assigned as LAN, static addressing
+* **DHCP server disabled** — critical, since OPNsense defaults to `192.168.1.1` with DHCP on, which would have collided with the family router's address and put a rogue DHCP server on their LAN
+* Web GUI reachable from a machine on the family network for staging
 
 An addressing choice was made to keep the box reachable from a desktop elsewhere in the house during setup. This access path is temporary and closes by design when the interfaces split — the family network becomes the WAN side at that point, and GUI access from WAN is blocked by default.
 
@@ -115,7 +116,7 @@ Config backup exported off the device. Full reboot performed while console acces
 
 This last step was deliberate: several changes in this session touched interface assignment and plugin authentication, and discovering a failure to auto-start from a different city, with no console access, would have been considerably worse than spending five minutes confirming it locally.
 
----
+\---
 
 ## Reusable lessons
 
@@ -128,3 +129,4 @@ This last step was deliberate: several changes in this session touched interface
 **Configuration that looks correct may not be loaded.** A firewall alias can display exactly the right contents in its edit form while its underlying table is empty. The diagnostic view showing what the packet filter actually loaded is a different thing from the configuration view, and only one of them reflects reality.
 
 **Old hardware fails in ways that impersonate software problems.** A failing drive produced installer hangs. A partition table produced a dead keyboard. Neither symptom pointed at its own cause.
+

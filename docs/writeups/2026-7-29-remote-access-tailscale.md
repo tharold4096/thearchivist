@@ -4,9 +4,9 @@ Goal: administer the firewall — and eventually the server behind it — from a
 
 Getting there required working around two behaviours that aren't obvious from the plugin's interface, and debugging a firewall rule that was correct in every visible respect while silently dropping all traffic.
 
-> **Note on addresses.** Tailnet addresses in this document are redacted. They aren't internet-routable, but publishing a live map of which address belongs to which device is unnecessary detail for a public repo.
+> \\\\\\\\\\\\\\\*\\\\\\\\\\\\\\\*Note on addresses.\\\\\\\\\\\\\\\*\\\\\\\\\\\\\\\* Tailnet addresses in this document are redacted. They aren't internet-routable, but publishing a live map of which address belongs to which device is unnecessary detail for a public repo.
 
----
+\---
 
 ## Why a mesh VPN rather than port forwarding
 
@@ -14,7 +14,7 @@ The constraint that shaped this was a university housing policy prohibiting pers
 
 A mesh VPN sidesteps this entirely. Connections are **outbound-only** from every node, so nothing needs forwarding at either NAT layer. The same property that satisfies the housing policy also makes double NAT a non-issue at the home end — which is why the family router keeps its normal configuration instead of being bridged.
 
----
+\---
 
 ## Sequencing: prove the way back in before closing the door
 
@@ -32,7 +32,7 @@ Doing this in the opposite order — splitting first, arranging remote access af
 
 **Fallbacks, in order:** a laptop plugged directly into the firewall's LAN port sits on the same subnet as the server and works whenever the VPN itself is the broken thing. Below that, VGA console and keyboard, which depend on no networking at all.
 
----
+\---
 
 ## Obstacle 1: the interface isn't assigned
 
@@ -48,7 +48,7 @@ This has been raised more than once as a bug against the plugin. The fix:
 
 A second, separate gate exists beyond the firewall: the administrative service's own listen interfaces. If bound to specific interfaces rather than all, the tunnel interface must be included or the service won't answer even with the firewall fully open.
 
----
+\---
 
 ## Obstacle 2: absence of a block is not permission
 
@@ -56,7 +56,7 @@ The next failure was more instructive. With the interface assigned and a pass ru
 
 The reasoning that delayed the fix was: *there are no rules blocking this, so it should pass.* That's backwards for a default-deny firewall. An interface with no matching rule blocks everything. The only reason the LAN interface behaves permissively is a built-in anti-lockout rule, which exists on LAN and nowhere else.
 
----
+\---
 
 ## Debugging a rule that looks correct
 
@@ -82,7 +82,7 @@ Rule      : Default deny / state violation rule
 
 **One observation that looked like a symptom but wasn't:** two simultaneous outbound source ports from each client. That's ordinary browser behaviour — parallel TCP connections to the same host — and had nothing to do with the failure.
 
----
+\---
 
 ## Hardening: from blanket allow to explicit allowlist
 
@@ -92,24 +92,24 @@ Tightened by creating a host alias containing only the two devices that should h
 
 Two things learned building it:
 
-- **Alias names cannot contain spaces.** Letters, numbers, and underscores only.
-- **Interface network macros are not host addresses.** Auto-complete offers entries referring to an interface's own network, which will not match traffic from client devices.
+* **Alias names cannot contain spaces.** Letters, numbers, and underscores only.
+* **Interface network macros are not host addresses.** Auto-complete offers entries referring to an interface's own network, which will not match traffic from client devices.
 
 **The tradeoff:** mesh addresses are stable per device, but a device that's removed and re-added — or an app reinstalled — can return with a different address and be locked out by its own rule. This is worth remembering as a cause when remote access mysteriously stops working after unrelated maintenance. The console and direct-LAN fallbacks remain unaffected.
 
 **Next layer, not yet implemented:** the mesh provider's own ACLs can enforce the same restriction before traffic ever reaches the firewall. Defence in depth rather than a replacement.
 
----
+\---
 
 ## Verification
 
-- Administrative interface reachable over the tunnel from a mobile device **on cellular data**, confirming genuine off-network access
-- Configuration exported off the device — the boot media is a consumable, and an exported config turns a failure into a short rebuild
-- **Full reboot performed while console access was still physically available**, confirming both the web interface and the tunnel come back unattended
+* Administrative interface reachable over the tunnel from a mobile device **on cellular data**, confirming genuine off-network access
+* Configuration exported off the device — the boot media is a consumable, and an exported config turns a failure into a short rebuild
+* **Full reboot performed while console access was still physically available**, confirming both the web interface and the tunnel come back unattended
 
 That last step was deliberate. The session had changed interface assignment, firewall rules, and plugin authentication. Discovering an auto-start failure remotely, with no console, would have been considerably worse than five minutes of local verification.
 
----
+\---
 
 ## Planned: subnet routing
 
@@ -120,3 +120,4 @@ The firewall will advertise the server's subnet to the mesh network, making ever
 **A detail that caused confusion:** the route approval interface is contextual, not a fixed menu item. It appears only after a node advertises a route, so looking for it beforehand finds nothing.
 
 **A deliberate omission:** the firewall will not advertise the family's subnet, even though it currently sits on it. Doing so would route mesh traffic into the household network — scope creep against the containment principle the whole design rests on — and would conflict badly with any other network using the same common address range.
+
