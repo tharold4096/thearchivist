@@ -1,0 +1,54 @@
+# --- Config exports & backups (the actual incident cause) ---
+# OPNsense/pfSense config exports contain auth keys, password hashes, addressing
+*.xml
+config-backups/
+*config-export*
+*backup*.xml
+
+# --- Anything that looks like a secret, by name ---
+*secret*
+*token*
+*apikey*
+*api_key*
+*authkey*
+*auth_key*
+*password*
+*credential*
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+id_ecdsa
+*.ppk
+
+# --- Environment / dotenv files ---
+.env
+.env.*
+*.env
+
+# --- iDRAC / Dell firmware payloads (large binaries, don't belong in git anyway) ---
+*.d6
+*.BIN
+*.exe
+
+# --- SSH known_hosts (leaks IPs/hostnames you've connected to) ---
+known_hosts
+known_hosts2
+
+# --- Tailscale / VPN state ---
+*.tsnet-cache/
+tailscale.state
+
+# --- OS/editor junk ---
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# --- Logs (can leak internal IPs/topology) ---
+*.log
+logs/
