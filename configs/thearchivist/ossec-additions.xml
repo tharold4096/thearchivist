@@ -1,0 +1,46 @@
+<ossec_config>
+  <!-- ======================================================================
+       The Archivist (Proxmox VE) - homelab additions
+       Appended to /var/ossec/etc/ossec.conf, immediately before
+       </ossec_config>. This is a stock Debian agent with no OPNsense plugin,
+       so ossec.conf is hand-managed here (unlike Sentry Gate, where the
+       plugin regenerates it from a template on every apply).
+       ====================================================================== -->
+
+  <!-- Proxmox task log.
+       Every pct/qm/backup/migrate action is appended to this index as one
+       line. It is the audit trail for "what changed on the hypervisor".
+       SSH and sudo are deliberately NOT configured here: Debian 13 ships
+       journald with no rsyslog, so there is no /var/log/auth.log, and the
+       agent's DEFAULT journald localfile already carries sshd and sudo. -->
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/pve/tasks/index</location>
+  </localfile>
+
+  <syscheck>
+    <!-- SSH server configuration: host keys, sshd_config, authorized_keys.
+         realtime works here - /etc/ssh is on the normal root filesystem. -->
+    <directories check_all="yes" realtime="yes" report_changes="yes">/etc/ssh</directories>
+
+    <!-- Proxmox cluster filesystem (pmxcfs).
+         /etc/pve is a FUSE mount, NOT a normal directory:
+             /dev/fuse on /etc/pve type fuse (rw,nosuid,nodev,...)
+         Two consequences, both deliberate choices below:
+           1. realtime="no" - inotify does not work reliably on FUSE, so a
+              realtime watch here silently never fires. Scheduled scanning is
+              the only thing that actually detects changes.
+           2. It must be listed explicitly. The stock <directories>/etc</...>
+              entry does not reliably descend into a separate FUSE mount.
+         This is where guest configs, storage definitions, firewall rules and
+         cluster membership live - changes here are high-signal. -->
+    <directories check_all="yes" realtime="no" report_changes="yes">/etc/pve</directories>
+
+    <!-- pmxcfs regenerates these constantly; hashing them produces pure noise. -->
+    <ignore>/etc/pve/.version</ignore>
+    <ignore>/etc/pve/.members</ignore>
+    <ignore>/etc/pve/.vmlist</ignore>
+    <ignore>/etc/pve/.rrd</ignore>
+    <ignore>/etc/pve/.clusterlog</ignore>
+  </syscheck>
+</ossec_config>
