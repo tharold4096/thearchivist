@@ -52,3 +52,17 @@ Thumbs.db
 # --- Logs (can leak internal IPs/topology) ---
 *.log
 logs/
+
+# --- Narrow exceptions to the blanket *.xml rule above -------------------
+# That rule exists to stop OPNsense/pfSense CONFIG EXPORTS, which carry auth
+# keys, password hashes and addressing. Wazuh rule and agent-config fragments
+# are also .xml but contain no credentials — they are rule logic only.
+# Each exception is listed individually and ON PURPOSE. Do not broaden this
+# to `!configs/**/*.xml`: that would let a future config export slip through
+# just by being dropped in the right directory.
+!configs/wazuh-manager/local_rules.xml
+!configs/thearchivist/ossec-additions.xml
+
+# --- Python bytecode ---
+__pycache__/
+*.pyc

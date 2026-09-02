@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# rc.d script for the Unbound DNSBL -> Wazuh bridge.
+# Install to /usr/local/etc/rc.d/unbound_dnsbl_wazuh (mode 555).
+# Enable with: sysrc unbound_dnsbl_wazuh_enable=YES
+#
+# daemon(8) wraps the python child. We deliberately do NOT pass -r: the bridge
+# already reopens the FIFO itself in a loop, and with -r a "stop" kills the
+# child only for daemon(8) to immediately respawn it, leaving an orphan.
+# pidfile tracks the CHILD (-p), not the supervisor (-P), because rc.subr
+# matches pidfile contents against $procname - pointing it at the supervisor
+# makes "service ... stop/restart" silently fail to find the process.
+#
+# PROVIDE: unbound_dnsbl_wazuh
+# REQUIRE: unbound
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="unbound_dnsbl_wazuh"
+rcvar="unbound_dnsbl_wazuh_enable"
+
+pidfile="/var/run/${name}.pid"
+supervisor_pidfile="/var/run/${name}.supervisor.pid"
+python="/usr/local/bin/python3"
+script="/usr/local/sbin/unbound-dnsbl-wazuh"
+
+command="/usr/sbin/daemon"
+procname="${python}"
+command_args="-t ${name} -p ${pidfile} -P ${supervisor_pidfile} -f ${python} ${script}"
+
+stop_postcmd()
+{
+    # Reap the supervisor if it outlived the child, and clear stale pidfiles
+    # so a later start does not refuse with "process already running".
+    if [ -f "${supervisor_pidfile}" ]; then
+        kill -TERM "$(cat ${supervisor_pidfile})" 2>/dev/null
+        rm -f "${supervisor_pidfile}"
+    fi
+    rm -f "${pidfile}"
+}
+
+load_rc_config $name
+: ${unbound_dnsbl_wazuh_enable:="NO"}
+
+run_rc_command "$1"

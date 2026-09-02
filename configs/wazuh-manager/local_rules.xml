@@ -1,0 +1,136 @@
+<!--
+  Local rules - Wazuh manager (LXC 104, 192.168.10.204)
+  Deploy to /var/ossec/etc/rules/local_rules.xml
+
+  Unbound DNSBL blocks arrive from Sentry Gate as JSON lines produced by
+  /usr/local/sbin/unbound-dnsbl-wazuh. Wazuh's built-in "json" decoder already
+  extracts every field, so no custom decoder is required - but without a rule
+  the events fall through to generic rule 1002 ("Unknown problem somewhere in
+  the system"), which is both wrong and unsearchable. These rules classify them.
+
+  User rule IDs must be >= 100000 so stock ruleset upgrades never collide.
+
+  NOTE ON FIELD SYNTAX: 'action' and 'srcip' are Wazuh *static* fields. They
+  must be matched with their dedicated elements (<action>, <srcip>) and
+  correlated with <same_source_ip/>. Using <field name="action"> instead makes
+  analysisd refuse the whole file with "Field 'action' is static", which takes
+  the entire ruleset down - always run 'wazuh-analysisd -t' before restarting.
+-->
+<group name="unbound,dnsbl,opnsense,">
+
+  <!-- Base match. level 0 = no alert on its own; exists so the action-specific
+       rules below have a cheap parent and the group is queryable. -->
+  <rule id="100100" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^unbound-dnsbl$</field>
+    <description>Unbound DNSBL event from OPNsense.</description>
+  </rule>
+
+  <!-- The enforcement signal: a DNS query matched the blocklist and was answered
+       with the policy's block address. This is the content-filtering audit trail. -->
+  <rule id="100101" level="5">
+    <if_sid>100100</if_sid>
+    <action>block</action>
+    <description>Unbound DNSBL: blocked $(domain) for client $(srcip) [list: $(blocklist)]</description>
+    <group>dnsbl_block,policy_violation,</group>
+  </rule>
+
+  <!-- ACTION_DROP - query dropped with SERVFAIL rather than answered. -->
+  <rule id="100102" level="5">
+    <if_sid>100100</if_sid>
+    <action>drop</action>
+    <description>Unbound DNSBL: dropped $(domain) for client $(srcip) [list: $(blocklist)]</description>
+    <group>dnsbl_block,policy_violation,</group>
+  </rule>
+
+  <!-- Repeated blocks from one client in a short window: either a device
+       aggressively retrying a blocked service, or someone probing the filter. -->
+  <rule id="100103" level="8" frequency="20" timeframe="120">
+    <if_matched_sid>100101</if_matched_sid>
+    <same_source_ip />
+    <description>Unbound DNSBL: high rate of blocked queries from $(srcip)</description>
+    <group>dnsbl_block,frequency,</group>
+  </rule>
+
+</group>
+
+<!--
+  ============================================================================
+  pfSense/OPNsense firewall block alerts
+  ============================================================================
+  PROBLEM: stock rule 87701 ("pfSense firewall drop event.", level 5) carries
+  <options>no_log</options>. The upstream comment says:
+
+      "We don't log firewall events, because they go to their own log file."
+
+  That intent is not met here. firewall.log is only written for rules in the
+  "firewall" group, and 87701 is in "firewall_block" - so the alert is
+  suppressed and never written anywhere. Decoding is perfect (the pf decoder
+  extracts srcip/dstip/action/protocol/ports correctly) but the event is
+  invisible in the dashboard: analysisd shows events_processed climbing while
+  alerts_written stays flat and firewall_written stays 0.
+
+  FIX: a child rule on 87701. no_log suppresses only the rule that declares it,
+  so a child still alerts. This is upgrade-safe - it does not overwrite a stock
+  rule, so a ruleset update cannot silently revert it.
+-->
+<group name="pfsense,opnsense,firewall,">
+
+  <!-- Broadcast/multicast chatter hitting the default-deny rule is pure noise:
+       SSDP discovery, NetBIOS, and similar. Classify it at level 0 FIRST so it
+       never reaches the alerting rule below. Without this, the default-deny
+       rule alone produced ~15,000 alerts/day on this network. -->
+  <rule id="100110" level="0">
+    <if_sid>87701</if_sid>
+    <dstip>224.0.0.0/4</dstip>
+    <description>OPNsense firewall block to multicast - not alerted.</description>
+  </rule>
+
+  <!-- Subnet broadcast addresses. Listed explicitly per subnet because <dstip>
+       takes an address or CIDR, not a wildcard, and will not accept a mixed
+       comma-separated list ("Invalid ip address" at ruleset load). Add a line
+       here if a new subnet is introduced. -->
+  <rule id="100113" level="0">
+    <if_sid>87701</if_sid>
+    <dstip>255.255.255.255</dstip>
+    <description>OPNsense firewall block to global broadcast - not alerted.</description>
+  </rule>
+
+  <rule id="100114" level="0">
+    <if_sid>87701</if_sid>
+    <dstip>192.168.1.255</dstip>
+    <description>OPNsense firewall block to WAN-side subnet broadcast - not alerted.</description>
+  </rule>
+
+  <rule id="100115" level="0">
+    <if_sid>87701</if_sid>
+    <dstip>192.168.10.255</dstip>
+    <description>OPNsense firewall block to LAN subnet broadcast - not alerted.</description>
+  </rule>
+
+  <rule id="100111" level="0">
+    <if_sid>87701</if_sid>
+    <dstport>1900,5353,137,138,20002</dstport>
+    <description>OPNsense firewall block of discovery chatter (dst) - not alerted.</description>
+  </rule>
+
+  <!-- SSDP/mDNS/NetBIOS *responses* carry the well-known port as SOURCE, with
+       an ephemeral destination port, so a dstport filter alone does not catch
+       them. Observed live: 192.168.1.31:1900 -> 192.168.1.223:39782 repeating
+       several times a minute, which was the single largest alert source after
+       the block rule was re-enabled. -->
+  <rule id="100116" level="0">
+    <if_sid>87701</if_sid>
+    <srcport>1900,5353,137,138,20002</srcport>
+    <description>OPNsense firewall block of discovery chatter (src) - not alerted.</description>
+  </rule>
+
+  <!-- The signal: a genuine blocked connection, with parsed fields so it is
+       searchable and correlatable rather than a raw string. -->
+  <rule id="100112" level="5">
+    <if_sid>87701</if_sid>
+    <description>OPNsense firewall BLOCK: $(srcip):$(srcport) -> $(dstip):$(dstport) $(protocol)</description>
+    <group>firewall_block,attack,</group>
+  </rule>
+
+</group>
