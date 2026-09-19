@@ -1,0 +1,15 @@
+# /etc/systemd/system/homelab-update.timer
+[Unit]
+Description=Weekly homelab patch run
+
+[Timer]
+OnCalendar=Sun 08:15
+# If the Archivist was down at 08:15 Sunday, run on the next boot instead of
+# silently skipping the week. This is the whole reason for systemd over cron
+# on an on-demand box.
+Persistent=true
+RandomizedDelaySec=300
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

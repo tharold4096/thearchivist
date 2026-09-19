@@ -1,0 +1,15 @@
+# /etc/systemd/system/homelab-update.service
+[Unit]
+Description=Homelab patch run (host + guests)
+# Don't start patching while guests are still coming up after the 07:45 wake.
+After=network-online.target pve-guests.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/homelab-update run
+# Guests need to actually finish booting before pct/qm exec will work.
+ExecStartPre=/bin/sleep 120
+TimeoutStartSec=3600
+Nice=10
+IOSchedulingClass=idle

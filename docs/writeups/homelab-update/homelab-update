@@ -1,0 +1,392 @@
+#!/usr/bin/env bash
+# homelab-update — weekly patch orchestrator for The Archivist
+# Install to /usr/local/sbin/homelab-update  (root:root 0750)
+#
+# Subcommands:
+#   run      apply updates to host + guests, write report, notify.  No reboots.
+#   status   print the most recent report
+#   reboot   ordered reboot of guests + host (manual, attended)
+#   dry-run  show what would be touched, change nothing (no snapshots, no
+#            apt, no ntfy push, latest.md untouched). Read-only pre-flight
+#            checks — holds, thin pool, guest agent — still run for real.
+
+set -uo pipefail
+
+### ─── config ──────────────────────────────────────────────────────────────
+# From `pct list` / `qm list`, 2026-09-15. Order matters: least disruptive
+# first, ntfy second-last (the push at the end needs it), Caddy last.
+# Stopped containers are skipped automatically; 105 nuclei-scanner and
+# 106 actualbudget are deliberately not listed (106 lives on `archive` dir
+# storage as raw, which cannot snapshot). 100 jellyfin set onboot=1 on
+# 2026-09-15 so it is running at 08:15 Sunday.
+LXC_IDS=(107 100 104 200 102 103)   # dns-audit jellyfin wazuh vaultwarden ntfy caddy
+VM_IDS=(101)                        # samba-vm
+
+SNAPSHOT_LXC=true
+SNAP_NAME="preupdate"
+KEEP_SNAPSHOT=true       # false = drop the snapshot on a clean run
+# Snapshots here are LVM-thin: they grow all week as the container writes.
+# 104 wazuh is by far the heaviest writer (~0.23 GiB/h measured 2026-09-15,
+# ~5x everything else combined), so its snapshot is dropped as soon as its
+# update comes back clean, even with KEEP_SNAPSHOT=true. On a FAILED update
+# it is kept as the rollback point — act on that ntfy alert within the week.
+DROP_SNAPSHOT_IDS=(104)
+# PVE refuses to snapshot containers with host bind mounts ("snapshot feature
+# is not available"): 100 mounts archive/media, 107 mounts archive/dnslogs and
+# archive/models. These are updated with NO rollback point — a deliberate
+# choice made 2026-09-15; recovery is rebuilding from config. The report says
+# so on every run so it never becomes a silent assumption.
+NO_SNAPSHOT_IDS=(100 107)
+
+# A full thin pool takes every guest on it down, snapshots included. Refuse to
+# snapshot or update a container if the pool is already above these.
+POOL_LV="pve/data"
+POOL_MAX_DATA=75         # percent
+POOL_MAX_META=60         # percent
+
+LOGDIR=/var/log/homelab-update
+NTFY_URL="http://192.168.10.203/homelab-updates"              # e.g. https://ntfy.sh/<long-random-topic>   empty = no push
+NTFY_TOKEN="<SET-ON-HOST>"   # real value only in /usr/local/sbin/homelab-update on the Archivist
+QM_TIMEOUT=1800          # seconds; apt in a VM can genuinely take a while
+
+# ── held packages ─────────────────────────────────────────────────────────
+# Wazuh upgrades are ORDER-SENSITIVE (indexer -> server -> dashboard) and an
+# agent must never be newer than its manager. An unattended dist-upgrade that
+# bumps wazuh-agent ahead of the manager in LXC 104 breaks it silently, so the
+# agent is pinned with:  apt-mark hold wazuh-agent
+#
+# To upgrade deliberately:
+#   1. upgrade the manager stack in LXC 104: indexer -> server -> dashboard
+#   2. apt-mark unhold wazuh-agent
+#   3. apt-get install -y wazuh-agent=<same version as manager>
+#   4. apt-mark hold wazuh-agent
+#   (repeat 2-4 inside every guest listed below that runs an agent)
+#
+# Holds are checked per target BEFORE it is touched. A target missing an
+# expected hold is not updated at all and the run reports FAILED — a missing
+# pin is caught before the upgrade that would break it, not after. The live
+# hold list still goes into every weekly report.
+# Keys: host | ct:<id> | vm:<id>.  Values: space-separated package names.
+declare -A EXPECTED_HOLDS=(
+  [host]="wazuh-agent"
+  [ct:104]="wazuh-manager wazuh-indexer wazuh-dashboard filebeat"
+  [vm:101]="wazuh-agent"
+)
+
+APT_OPTS=(-y
+  -o Dpkg::Options::=--force-confdef
+  -o Dpkg::Options::=--force-confold)
+
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a      # needrestart is interactive by default and WILL hang an unattended run
+
+### ─── plumbing ────────────────────────────────────────────────────────────
+STAMP="$(date +%Y-%m-%d_%H%M)"
+REPORT="$LOGDIR/$STAMP.md"     # dry-run switches this to $STAMP.dry.md
+LATEST="$LOGDIR/latest.md"
+FAILURES=()
+REBOOT_NEEDED=()
+SVC_RESTARTS=()
+DRY=false
+
+mkdir -p "$LOGDIR"
+
+log()  { printf '%s\n' "$*" | tee -a "$REPORT" >/dev/null; }
+say()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
+fail() { FAILURES+=("$1"); say "FAIL: $1"; log "- **FAILED:** $1"; }
+
+do_it() { if $DRY; then say "DRY: $*"; else "$@"; fi; }
+
+apt_cmd='apt-get update -qq && apt-get '"${APT_OPTS[*]}"' dist-upgrade'
+
+### ─── per-target work ─────────────────────────────────────────────────────
+name_of_ct() { pct config "$1" 2>/dev/null | awk -F': ' '/^hostname:/{print $2}'; }
+name_of_vm() { qm  config "$1" 2>/dev/null | awk -F': ' '/^name:/{print $2}'; }
+
+# Run a shell snippet inside a VM via the guest agent. Prints the guest's
+# stdout and returns the guest's exit code, or 255 if the agent call itself
+# failed (not running, mid-restart, timed out).
+guest_sh() {
+  local id=$1 timeout=$2 cmd=$3 json
+  # Don't trust qm's own exit status to mean anything beyond "JSON or not".
+  json=$(qm guest exec "$id" --timeout "$timeout" -- /bin/bash -c "$cmd" 2>/dev/null)
+  [[ -n "$json" ]] || return 255
+  python3 -c 'import json, sys
+try:
+    d = json.load(sys.stdin)
+except ValueError:
+    sys.exit(255)
+sys.stdout.write(d.get("out-data", ""))
+sys.exit(d.get("exitcode", 255) if d.get("exited") else 255)' <<<"$json"
+}
+
+# Space-separated hold list for a target. Empty output on any error, which
+# check_holds then treats as "holds missing" — fail closed.
+holds_of() {
+  case "$1" in
+    host) apt-mark showhold 2>/dev/null ;;
+    ct:*) pct exec "${1#ct:}" -- apt-mark showhold 2>/dev/null ;;
+    vm:*) guest_sh "${1#vm:}" 60 'apt-mark showhold' ;;
+  esac | tr '\n' ' '
+}
+
+# Returns 1 (and records a failure) if the target is missing an expected hold.
+check_holds() {
+  local target=$1 label=$2 held pkg missing=()
+  [[ -n "${EXPECTED_HOLDS[$target]:-}" ]] || return 0
+  held="$(holds_of "$target")"
+  log "- apt holds on $label: ${held:-none}"
+  for pkg in ${EXPECTED_HOLDS[$target]}; do
+    [[ " $held " == *" $pkg "* ]] || missing+=("$pkg")
+  done
+  if ((${#missing[@]})); then
+    fail "$label: expected apt hold missing: ${missing[*]} — NOT updated (unattended upgrade could break Wazuh ordering)"
+    return 1
+  fi
+}
+
+pool_usage() { LC_ALL=C lvs --noheadings --nosuffix -o data_percent,metadata_percent "$POOL_LV" 2>/dev/null; }
+
+pool_ok() {
+  local d m; read -r d m <<<"$(pool_usage)"
+  [[ -n "${d:-}" && -n "${m:-}" ]] || return 1          # can't read the pool = don't snapshot
+  (( ${d%.*} < POOL_MAX_DATA && ${m%.*} < POOL_MAX_META ))
+}
+
+snapshot_ct() {
+  local id=$1 nm; nm="$(name_of_ct "$id")"
+  $SNAPSHOT_LXC || return 0
+  if $DRY; then log "- DRY: would snapshot \`$SNAP_NAME\` on $nm ($id)"; return 0; fi
+  if pct snapshot "$id" "$SNAP_NAME" --description "pre-update $STAMP" >/dev/null 2>&1; then
+    log "- snapshot \`$SNAP_NAME\` taken on $nm ($id)"
+  else
+    fail "snapshot of $nm ($id) — NOT updated (no rollback point)"
+    return 1
+  fi
+}
+
+# One container end to end: running? -> holds -> pool -> snapshot -> apt.
+# Every gate fails closed: no hold, no headroom, or no snapshot means no apt.
+process_ct() {
+  local id=$1 nm snap=$SNAPSHOT_LXC; nm="$(name_of_ct "$id")"
+  [[ "$(pct status "$id" 2>/dev/null | awk '{print $2}')" == "running" ]] || { log "- **$nm ($id):** not running, skipped"; return 0; }
+  check_holds "ct:$id" "$nm ($id)" || return 1
+  if [[ " ${NO_SNAPSHOT_IDS[*]} " == *" $id "* ]]; then
+    snap=false
+    log "- $nm ($id): no snapshot (bind mounts) — updating WITHOUT a rollback point"
+  fi
+  # Retire last week's snapshot BEFORE the pool check. If the check were first,
+  # a pool over the limit would skip this, and the stale snapshot — the likely
+  # reason the pool is full — would keep growing for another week.
+  if $snap && pct listsnapshot "$id" 2>/dev/null | grep -q "$SNAP_NAME"; then
+    do_it pct delsnapshot "$id" "$SNAP_NAME" >/dev/null 2>&1 \
+      || { fail "$nm ($id): could not remove previous \`$SNAP_NAME\` snapshot — NOT updated"; return 1; }
+  fi
+  if $snap && ! pool_ok; then
+    fail "$nm ($id): thin pool $POOL_LV at [$(pool_usage | xargs)] data/meta %, limit $POOL_MAX_DATA/$POOL_MAX_META — NOT snapshotted or updated"
+    return 1
+  fi
+  if $snap; then snapshot_ct "$id" || return 1; fi
+  update_ct "$id" || return 1
+  if ! $DRY && $snap && [[ " ${DROP_SNAPSHOT_IDS[*]} " == *" $id "* ]]; then
+    pct delsnapshot "$id" "$SNAP_NAME" >/dev/null 2>&1 \
+      && log "  - snapshot dropped after clean update (high-churn guest)" \
+      || fail "$nm ($id): could not drop snapshot \`$SNAP_NAME\` — it will grow until removed"
+  fi
+}
+
+update_ct() {
+  local id=$1 nm out; nm="$(name_of_ct "$id")"
+  say "updating LXC $nm ($id)"
+  if $DRY; then log "- DRY: would update $nm ($id)"; return 0; fi
+  if out=$(pct exec "$id" -- bash -lc "$apt_cmd" 2>&1); then
+    log "- **$nm ($id):** $(echo "$out" | grep -cE '^(Setting up|Unpacking)') package actions"
+    # LXCs share the host kernel — only service restarts are meaningful here.
+    if pct exec "$id" -- bash -lc 'command -v needrestart >/dev/null'; then
+      local svc
+      svc=$(pct exec "$id" -- bash -lc 'needrestart -b 2>/dev/null | grep -c ^NEEDRESTART-SVC' || true)
+      [[ "${svc:-0}" -gt 0 ]] && { SVC_RESTARTS+=("$nm"); log "  - $svc service(s) want a restart"; }
+    fi
+    return 0   # process_ct gates on this; don't leak the [[ ]] above as a failure
+  else
+    fail "$nm ($id) apt: $(echo "$out" | tail -3 | tr '\n' ' ')"
+    return 1
+  fi
+}
+
+update_vm() {
+  local id=$1 nm unit rc="" audit waited=0; nm="$(name_of_vm "$id")"
+  [[ "$(qm status "$id" | awk '{print $2}')" == "running" ]] || { log "- **$nm ($id):** not running, skipped"; return 0; }
+  qm agent "$id" ping >/dev/null 2>&1 || { fail "$nm ($id): qemu-guest-agent not responding"; return 1; }
+  check_holds "vm:$id" "$nm ($id)" || return 1
+  say "updating VM $nm ($id)"
+  if $DRY; then log "- DRY: would update $nm ($id) (apt detached from the guest agent via systemd-run)"; return 0; fi
+
+  # apt must NOT run as a child of qemu-guest-agent. The agent unit is
+  # KillMode=control-group, so an upgrade that restarts qemu-guest-agent kills
+  # everything it spawned — on 2026-09-13 that left dpkg half-configured.
+  # systemd-run puts apt in its own transient unit; the result lands in a file
+  # we poll for, which survives the agent restarting under us.
+  unit="homelab-apt-$STAMP"
+  guest_sh "$id" 60 "rm -f /var/log/homelab-apt.rc
+    systemd-run --unit=$unit --collect --quiet \
+      --setenv=DEBIAN_FRONTEND=noninteractive --setenv=NEEDRESTART_MODE=a \
+      /bin/bash -c '{ $apt_cmd; } >/var/log/homelab-apt.log 2>&1; echo \$? >/var/log/homelab-apt.rc.tmp && mv /var/log/homelab-apt.rc.tmp /var/log/homelab-apt.rc'" >/dev/null \
+    || { fail "$nm ($id): could not start detached apt unit"; return 1; }
+
+  while (( waited < QM_TIMEOUT )); do
+    sleep 15; waited=$((waited + 15))
+    # 255 = agent unreachable (e.g. restarting mid-upgrade) — keep waiting.
+    rc=$(guest_sh "$id" 30 'cat /var/log/homelab-apt.rc 2>/dev/null') || continue
+    rc="${rc//[^0-9]/}"
+    [[ -n "$rc" ]] && break
+  done
+
+  if [[ -z "$rc" ]]; then
+    fail "$nm ($id): apt not finished after ${QM_TIMEOUT}s — unit $unit may still be running"
+    return 1
+  fi
+  if [[ "$rc" != 0 ]]; then
+    fail "$nm ($id) apt exit $rc: $(guest_sh "$id" 30 'tail -3 /var/log/homelab-apt.log' | tr '\n' ' ')"
+    return 1
+  fi
+  # Exit 0 is not proof on its own. Confirm dpkg left nothing half-done.
+  audit=$(guest_sh "$id" 60 'dpkg --audit 2>&1')
+  if [[ $? -ne 0 || -n "$audit" ]]; then
+    fail "$nm ($id): dpkg --audit not clean after update: $(echo "$audit" | head -3 | tr '\n' ' ')"
+    return 1
+  fi
+  log "- **$nm ($id):** updated, dpkg audit clean"
+  if guest_sh "$id" 60 'test -f /var/run/reboot-required' >/dev/null; then
+    REBOOT_NEEDED+=("$nm ($id)"); log "  - reboot required"
+  fi
+}
+
+update_host() {
+  check_holds host "archivist (host)" || return 1
+  say "updating Proxmox host"
+  if $DRY; then log "- DRY: would dist-upgrade the host"; return 0; fi
+  # pve-daily-update.timer (01:00 + up to 5h random, Persistent) catches up
+  # after the 07:45 wake and runs its own `apt-get update` at an unpredictable
+  # time — 08:25 on 2026-09-13, mid-run. apt 3.0 fails instantly on a held
+  # lists lock and ignores DPkg::Lock::Timeout / Acquire::Lock::Timeout there
+  # (tested 2026-09-15), so retry instead of reporting a false failure.
+  local try
+  for try in {1..10}; do
+    apt-get update -qq >>"$LOGDIR/$STAMP.host.log" 2>&1 && break
+    if ((try == 10)); then
+      fail "host apt-get update failed 10 times (lock held or network) — see $LOGDIR/$STAMP.host.log"
+      return 1
+    fi
+    say "host apt-get update failed (try $try/10), retrying in 30s"
+    sleep 30
+  done
+  # dist-upgrade, not upgrade — Proxmox package transitions need dependency changes.
+  if apt-get "${APT_OPTS[@]}" dist-upgrade >>"$LOGDIR/$STAMP.host.log" 2>&1; then
+    log "- **archivist (host):** dist-upgrade OK"
+  else
+    fail "host dist-upgrade — see $LOGDIR/$STAMP.host.log"
+  fi
+  local running newest
+  running="$(uname -r)"
+  newest="$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's|.*/vmlinuz-||' | sort -V | tail -1)"
+  if [[ -n "$newest" && "$newest" != "$running" ]]; then
+    REBOOT_NEEDED+=("archivist host: $running -> $newest")
+    log "  - **new kernel staged: $running -> $newest** (activates at the 23:00 cycle)"
+  fi
+}
+
+# fstrim every running listed container after the updates. Without it, blocks
+# ext4 frees stay allocated in the thin pool: vm-104 had 20.4 GiB of them on
+# 2026-09-15. Bind mounts are skipped by pct itself.
+# Lag to know about: a container still holding this run's `preupdate` snapshot
+# (200, 102, 103) keeps its trimmed blocks referenced by that snapshot, so
+# the pool only gets them back when the snapshot is retired next week.
+trim_cts() {
+  local id nm out before after
+  before="$(pool_usage | awk '{print $1}')"
+  for id in "${LXC_IDS[@]}"; do
+    nm="$(name_of_ct "$id")"
+    [[ "$(pct status "$id" 2>/dev/null | awk '{print $2}')" == "running" ]] || continue
+    if $DRY; then log "- DRY: would fstrim $nm ($id)"; continue; fi
+    if out=$(pct fstrim "$id" 2>&1); then
+      log "- $nm ($id): $(echo "$out" | tail -1)"
+    else
+      fail "fstrim $nm ($id): $(echo "$out" | tail -2 | tr '\n' ' ')"
+    fi
+  done
+  after="$(pool_usage | awk '{print $1}')"
+  # fstrim's own figure is the filesystem's free space, not what the pool got
+  # back — this line is the real number.
+  $DRY || log "- thin pool data %: $before -> $after"
+}
+
+notify() {
+  [[ -n "$NTFY_URL" ]] || return 0
+  local title body prio=default
+  if ((${#FAILURES[@]})); then title="Homelab update: ${#FAILURES[@]} FAILED"; prio=high
+  elif ((${#REBOOT_NEEDED[@]})); then title="Homelab update OK — kernel staged"
+  else title="Homelab update OK"; fi
+  body="$(date '+%a %d %b %H:%M')
+failures: ${#FAILURES[@]}
+reboot pending: ${#REBOOT_NEEDED[@]}
+service restarts: ${#SVC_RESTARTS[@]}
+full report: $LATEST"
+  curl -fsS -m 20 -H "Title: $title" -H "Priority: $prio" -H "Tags: package" -H "Authorization: Bearer $NTFY_TOKEN" \
+       -d "$body" "$NTFY_URL" >/dev/null || say "ntfy push failed"
+}
+
+### ─── subcommands ─────────────────────────────────────────────────────────
+cmd_run() {
+  $DRY && REPORT="$LOGDIR/$STAMP.dry.md"
+  log "# Homelab update$($DRY && echo ' (DRY RUN)') — $(date '+%A %d %B %Y, %H:%M')"
+  log ""
+  log "## Containers"
+  for id in "${LXC_IDS[@]}"; do process_ct "$id"; done
+  log ""
+  log "## Virtual machines"
+  for id in "${VM_IDS[@]}"; do update_vm "$id"; done
+  log ""
+  log "## Host"
+  update_host
+  log ""
+  log "## Trim"
+  trim_cts
+  log ""
+  log "## Storage"
+  log "- thin pool $POOL_LV data/meta %: $(pool_usage | xargs)"
+  log ""
+  log "## Summary"
+  log "- failures: ${#FAILURES[@]}"
+  log "- reboot pending: ${#REBOOT_NEEDED[@]} ${REBOOT_NEEDED[*]:-}"
+  log "- service restarts wanted: ${#SVC_RESTARTS[@]} ${SVC_RESTARTS[*]:-}"
+  ((${#REBOOT_NEEDED[@]})) && log "" && log "_No reboot performed. Nightly 23:00 power cycle will activate staged changes._"
+
+  if ! $DRY && ! ((${#FAILURES[@]})) && ! $KEEP_SNAPSHOT; then
+    for id in "${LXC_IDS[@]}"; do pct delsnapshot "$id" "$SNAP_NAME" >/dev/null 2>&1; done
+  fi
+
+  if $DRY; then
+    say "dry run: report at $REPORT (latest.md, retention and ntfy untouched)"
+  else
+    ln -sfn "$REPORT" "$LATEST"
+    find "$LOGDIR" -name '*.md' -mtime +90 -delete
+    notify
+  fi
+  ((${#FAILURES[@]})) && return 1 || return 0
+}
+
+cmd_reboot() {
+  say "ordered reboot: host reboot cycles all guests, so that's all we do"
+  read -rp "Reboot the Archivist now? [y/N] " a
+  [[ "${a,,}" == "y" ]] || { say "aborted"; return 1; }
+  systemctl reboot
+}
+
+case "${1:-run}" in
+  run)     cmd_run ;;
+  dry-run) DRY=true; cmd_run ;;
+  status)  cat "$LATEST" ;;
+  reboot)  cmd_reboot ;;
+  *)       echo "usage: homelab-update {run|dry-run|status|reboot}" >&2; exit 2 ;;
+esac
