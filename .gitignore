@@ -66,3 +66,19 @@ logs/
 # --- Python bytecode ---
 __pycache__/
 *.pyc
+
+# --- arr media stack: kept locally only, never published ---
+# Everything about the arr stack (Sonarr/Radarr/Prowlarr/Seerr/qBittorrent/
+# FlareSolverr, indexers, VPN for downloads) lives on the local machine only.
+# Name new arr files with one of these tokens, or put them under an arr-stack/ dir.
+*arr-stack*
+arr-stack/
+*sonarr*
+*radarr*
+*prowlarr*
+*lidarr*
+*readarr*
+*bazarr*
+*seerr*
+*qbittorrent*
+*flaresolverr*
