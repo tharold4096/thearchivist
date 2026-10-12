@@ -92,6 +92,16 @@
   Symptom: I injected CRIT results into `checkmk;Uptime`. Notification #0, `last_hard_state_change` equal to `last_check`, and notify.log showed only event `f` (flapping), which the rule correctly rejected.
   Root cause: agent-fed services like `Uptime` are passive and are filled in every minute by the `Check_MK` service, so `DISABLE_SVC_CHECK` on them does nothing. The real OK kept overwriting the fake CRIT. That OK↔CRIT seesaw caused the flapping, which suppresses notifications by design, and each flip restarted the 5-minute delay. It was a test-method error, not a pipeline fault.
   Fix: tested with a dedicated failing active check instead (see What worked). I put `Uptime` back to its original state: active checks disabled and flap detection on.
+* **Issue: phantom "New notification" pushes with nothing in the ntfy app.**
+  Symptom: empty pushes kept arriving on the iPhone at random times, while ntfy's `messages_published` counter didn't move.
+  Root cause: a **relay hash collision**. The iOS upstream relay wakes the phone on ntfy.sh topic `sha256("http://ntfy.home.arpa/homelab-alerts")`. Any other self-hoster with the same base-url and topic name, both common defaults, shares that channel. Their publishes woke my phone, the app asked my server for an unknown message ID, and it showed an empty placeholder.
+  Confirmation: I listened read-only to both relay channels on ntfy.sh. A `poll_request` arrived at 18:06:12 while my server's counter stayed at 12 before and after, and CheckMK sent nothing. Public `ntfy.sh/homelab-alerts` returns 403, meaning someone has reserved that name.
+  Fix: renamed both topics to `homelab-{alerts,updates}-<10 random chars>`, made up of letters and digits only. Three publishers were switched:
+  * the CheckMK plugin, which now reads its URL from `~monitoring/etc/ntfy-url` (600) so the name is never in code;
+  * `/usr/local/sbin/homelab-update`;
+  * `/etc/thinpool-alert.conf`.
+
+  Each got a `.bak-20261012` copy, a temp file, and an `mv`. New ACLs were added before the switch, and the old ones are removed only after the phone is moved over. The repo copies use `<SET-ON-HOST>`, because a known topic name is enough to send phone wake-ups. Message content never leaked in either direction: it only ever lives on the origin server.
 * **Issue: nothing on the phone even from a direct ntfy POST.**
   Root cause: ntfy stats showed `subscribers=0`. `homelab-alerts` was a brand-new topic that the phone had never subscribed to.
   Fix: subscribed in the iOS app to `homelab-alerts` on `http://ntfy.home.arpa` (it must match `base-url` exactly, because the upstream relay keys on a hash of it) as `tobias`.

@@ -4,7 +4,13 @@
 # CheckMK notification plugin: push to self-hosted ntfy (CT 102).
 # Install: ~monitoring/local/share/check_mk/notifications/ntfy (mode 755)
 # Token:   ~monitoring/etc/ntfy-token (mode 600, ntfy user `checkmk`,
-#          write-only on topic `homelab-alerts`). Never commit the token.
+#          write-only on the alerts topic). Never commit the token.
+# URL:     ~monitoring/etc/ntfy-url (mode 600), e.g.
+#          http://192.168.10.203/<SET-ON-HOST>
+#          The topic name is unguessable on purpose and must not be committed:
+#          ntfy's iOS relay wakes phones on sha256(base-url/topic), so a common
+#          name collides with strangers' servers (phantom "New message" pushes),
+#          and a known name lets anyone trigger empty wake-ups.
 #
 # Posts to the ntfy CT IP directly, NOT via Caddy, so a Caddy outage
 # can still be alerted on.
@@ -14,7 +20,7 @@ import sys
 import urllib.error
 import urllib.request
 
-NTFY_URL = "http://192.168.10.203/homelab-alerts"
+URL_FILE = os.path.expanduser("~/etc/ntfy-url")
 TOKEN_FILE = os.path.expanduser("~/etc/ntfy-token")
 CMK_URL = "https://checkmk.home.arpa/monitoring/check_mk/"
 
@@ -53,12 +59,14 @@ body = f"{output}\n{e('NOTIFY_SHORTDATETIME', '')}".strip()
 try:
     with open(TOKEN_FILE) as f:
         token = f.read().strip()
+    with open(URL_FILE) as f:
+        ntfy_url = f.read().strip()
 except OSError as exc:
-    sys.stderr.write(f"cannot read token: {exc}\n")
+    sys.stderr.write(f"cannot read token/url: {exc}\n")
     sys.exit(2)
 
 req = urllib.request.Request(
-    NTFY_URL,
+    ntfy_url,
     data=body.encode(),
     method="POST",
     headers={
