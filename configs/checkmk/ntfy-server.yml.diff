@@ -1,0 +1,7 @@
+# CT 102 (ntfy) /etc/ntfy/server.yml, 2026-10-12
+# Backup: /etc/ntfy/server.yml.bak-20261012-upstream
+# Why: iOS cannot background-poll a self-hosted server. Without this, iOS
+# delivery "can take hours". Upstream receives only sha256(topic URL) +
+# message ID; message bodies stay on CT 102.
+309a310
+> upstream-base-url: "https://ntfy.sh"
