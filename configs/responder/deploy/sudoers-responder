@@ -1,0 +1,3 @@
+# /etc/sudoers.d/responder (root:root 440), installed with visudo -c check.
+# The service may start the fixed Claude runner as rclaude, with NO arguments ("" = none allowed).
+responder ALL=(rclaude) NOPASSWD: /usr/local/lib/responder/run-claude ""

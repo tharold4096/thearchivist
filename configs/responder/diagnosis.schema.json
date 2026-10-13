@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "diagnosis": {"type": "string", "description": "One or two sentences: what is wrong and why, from evidence you read."},
+    "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+    "proposed_action": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "properties": {
+            "host": {"type": "string"},
+            "verb": {"type": "string"}
+          },
+          "required": ["host", "verb"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "rationale": {"type": "string", "description": "Evidence for the diagnosis and why the action (or no action) fits."}
+  },
+  "required": ["diagnosis", "confidence", "proposed_action", "rationale"],
+  "additionalProperties": false
+}

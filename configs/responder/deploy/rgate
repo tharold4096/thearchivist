@@ -1,0 +1,82 @@
+#!/bin/bash
+# rgate - SSH forced-command gate for the responder (CT 116 -> this host).
+# Installed at /usr/local/bin/rgate (root:root 755). Called by sshd because
+# ~rgate/.ssh/authorized_keys pins two keys, both from="192.168.10.216":
+#   executor key (~responder/.ssh/gate_ed25519):   command="/usr/local/bin/rgate"       full mode
+#   Claude key   (~rclaude/.ssh/read_ed25519):      command="/usr/local/bin/rgate read"  read-only
+# The mode comes from authorized_keys ($1), never from the request, so the Claude key can't
+# ask for a write no matter what it sends.
+#
+# Contract: exactly ONE word in SSH_ORIGINAL_COMMAND, from the fixed list below.
+# Anything else is refused and logged. Input is never passed to a shell.
+
+set -u
+umask 077
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export LC_ALL=C
+
+UNIT=jellyfin.service
+MAXOUT=16384
+TAG=rgate
+CLIENT=${SSH_CLIENT%% *}
+MODE=${1:-full}
+[ "$MODE" = full ] || [ "$MODE" = read ] || { logger -t rgate -- "bad mode"; exit 64; }
+
+log() { logger -t "$TAG" -- "client=${CLIENT:-?} mode=$MODE $*"; }
+
+# Bounded, escaped copy of the raw request, for logging only. Never executed.
+RAW=$(printf '%q' "${SSH_ORIGINAL_COMMAND:-}" | head -c 200)
+
+refuse() {
+    log "verb=- result=refused reason=$1 raw=$RAW"
+    echo "rgate: refused ($1)" >&2
+    exit 64
+}
+
+# Split on whitespace into an array. read -a performs no globbing, expansion or evaluation.
+read -ra ARGS <<< "${SSH_ORIGINAL_COMMAND:-}"
+
+[ "${#ARGS[@]}" -eq 0 ] && refuse "empty"
+[ "${#ARGS[@]}" -ne 1 ] && refuse "argc=${#ARGS[@]}"
+VERB=${ARGS[0]}
+# read stops at the first newline and trims whitespace, so also require the raw
+# request to be byte-identical to the verb. What ran must equal what was asked.
+[ "${SSH_ORIGINAL_COMMAND}" = "$VERB" ] || refuse "not-exact"
+
+# Run a command, cap its output, and keep the command's own exit code.
+run() {
+    "$@" 2>&1 | head -c "$MAXOUT"
+    return "${PIPESTATUS[0]}"
+}
+
+health_summary() {
+    df -h / /media
+    echo
+    free -m
+    echo
+    echo "load: $(cat /proc/loadavg)"
+    uptime -p
+}
+
+case "$VERB" in
+    status)   # read: unprivileged
+        run systemctl show "$UNIT" -p ActiveState,SubState,MainPID,ActiveEnterTimestamp,NRestarts,Result
+        ;;
+    logs)     # read: via systemd-journal group membership, no sudo
+        run journalctl -u "$UNIT" -n 100 --no-pager -o short-iso
+        ;;
+    health)   # read: unprivileged
+        run health_summary
+        ;;
+    restart)  # write: the only sudo rule; never for the read-only key
+        [ "$MODE" = full ] || refuse "read-only-key"
+        run sudo -n /usr/bin/systemctl restart "$UNIT"
+        ;;
+    *)
+        refuse "unknown-verb"
+        ;;
+esac
+RC=$?
+
+log "verb=$VERB result=$([ "$RC" -eq 0 ] && echo ok || echo error) rc=$RC"
+exit "$RC"

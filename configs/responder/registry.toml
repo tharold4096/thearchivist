@@ -1,0 +1,24 @@
+# Responder host registry: the allowlist. Installed at /etc/responder/registry.toml (root:root 644).
+# A proposal is acted on only if its host and verb appear here. Anything else becomes diagnosis-only.
+#
+# Onboarding a host = rgate + authorized_keys (two keys: executor full, Claude `rgate read`) +
+# host key pinned in /etc/responder/known_hosts + boundary tests + an entry here.
+
+[hosts.jellyfin]
+checkmk_name = "jellyfin"            # host name as Checkmk reports it
+ip = "192.168.10.207"
+unit = "jellyfin.service"
+read_verbs = ["status", "logs", "health"]
+write_verbs = ["restart"]
+protected = false                    # true = always ask, never remembered (§3a)
+# Post-action verification: systemd says active long before Jellyfin can serve (Phase 1 finding).
+verify_url = "http://192.168.10.207:8096/health"
+verify_expect = "Healthy"
+verify_timeout = 60
+
+# Hosts that may appear in alerts but must never be learned. Listed so the
+# executor refuses to write a grant for them even if a registry entry is added later.
+[protected]
+checkmk_names = ["ntfy", "wazuh", "vaultwarden", "responder"]
+units = ["ssh.service", "sshd.service", "wazuh-agent.service", "check-mk-agent.socket",
+         "cmk-agent-ctl-daemon.service", "ntfy.service", "vaultwarden.service"]

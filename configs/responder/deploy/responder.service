@@ -1,0 +1,30 @@
+[Unit]
+Description=Responder: Checkmk alert diagnosis and approval-gated remediation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=responder
+Group=responder
+EnvironmentFile=/etc/responder/responder.env
+WorkingDirectory=/opt/responder
+# -E -s: ignore PYTHON* env and user site-packages. Not -I: that also drops the script's own
+# (root-owned) directory from sys.path, and the modules live next to app.py.
+ExecStart=/usr/bin/python3 -E -s /opt/responder/app.py
+Restart=on-failure
+RestartSec=5
+SyslogIdentifier=responder
+UMask=0077
+StateDirectory=responder
+StateDirectoryMode=0700
+NoNewPrivileges=no
+# NoNewPrivileges must stay off: the service starts Claude via sudo as `rclaude`.
+ProtectSystem=strict
+# Children (sudo -> run-claude as rclaude) inherit this mount namespace, so rclaude's
+# home and sudo's state must be writable here too. File permissions still apply.
+ReadWritePaths=/var/lib/responder /var/lib/rclaude -/run/sudo
+ProtectHome=read-only
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
