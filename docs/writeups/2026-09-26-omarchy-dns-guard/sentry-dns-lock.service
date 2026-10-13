@@ -1,0 +1,14 @@
+[Unit]
+Description=Sentry DNS lock -- reject DNS to anything but Sentry Gate
+Before=network-pre.target systemd-resolved.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/sentry-dns-guard/lock.nft
+# No ExecStop on purpose: stopping the unit does not open the lock. Removing
+# the table is a deliberate `nft delete table`, which the guard reports.
+
+[Install]
+WantedBy=multi-user.target

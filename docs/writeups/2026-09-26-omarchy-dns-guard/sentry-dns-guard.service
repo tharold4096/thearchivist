@@ -1,0 +1,23 @@
+[Unit]
+Description=Sentry DNS guard -- tamper-evident DNS/VPN/browser monitor
+Documentation=file:///usr/local/lib/sentry-dns-guard/sentry-dns-guard.py
+After=network-online.target systemd-resolved.service tailscaled.service
+Wants=network-online.target
+# Never give up restarting: a crash loop must keep pinging, not go quiet.
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/local/sbin/sentry-dns-guard run
+# Runs on every stop, crash and watchdog kill. Silent only during shutdown.
+ExecStopPost=/usr/local/sbin/sentry-dns-guard stopped
+# Must match WATCHDOG_S in the script.
+WatchdogSec=60
+Restart=always
+RestartSec=5
+TimeoutStopSec=90
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

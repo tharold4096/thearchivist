@@ -45,7 +45,7 @@ POOL_MAX_DATA=75         # percent
 POOL_MAX_META=60         # percent
 
 LOGDIR=/var/log/homelab-update
-NTFY_URL="http://192.168.10.203/homelab-updates"              # e.g. https://ntfy.sh/<long-random-topic>   empty = no push
+NTFY_URL="http://192.168.10.203/<SET-ON-HOST>"              # e.g. https://ntfy.sh/<long-random-topic>   empty = no push
 NTFY_TOKEN="<SET-ON-HOST>"   # real value only in /usr/local/sbin/homelab-update on the Archivist
 QM_TIMEOUT=1800          # seconds; apt in a VM can genuinely take a while
 

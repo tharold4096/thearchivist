@@ -1,0 +1,6 @@
+[Unit]
+Description=Push ntfy alert when the local-lvm thin pool fills
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/thinpool-alert

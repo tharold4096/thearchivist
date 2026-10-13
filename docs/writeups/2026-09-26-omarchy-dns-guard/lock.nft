@@ -1,0 +1,22 @@
+#!/usr/sbin/nft -f
+# sentry_dns_lock -- the only DNS server this machine may talk to is Sentry
+# Gate's Unbound over Tailscale. Everything else on 53/853 is rejected, for
+# this host (output) and anything it routes, e.g. containers (forward).
+# Installed to /etc/sentry-dns-guard/lock.nft, loaded by sentry-dns-lock.service.
+# DoH on 443 cannot be blocked by port; Chromium's policy covers that.
+
+table inet sentry_dns_lock
+delete table inet sentry_dns_lock
+
+table inet sentry_dns_lock {
+	chain output {
+		type filter hook output priority filter; policy accept;
+		oifname "lo" accept
+		ip daddr 100.116.54.77 meta l4proto { tcp, udp } th dport { 53, 853 } accept
+		meta l4proto { tcp, udp } th dport { 53, 853 } reject
+	}
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+		meta l4proto { tcp, udp } th dport { 53, 853 } reject
+	}
+}

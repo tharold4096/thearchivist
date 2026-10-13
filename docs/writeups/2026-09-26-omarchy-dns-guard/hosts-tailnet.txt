@@ -1,0 +1,5 @@
+# Appended to /etc/hosts. Tailscale accept-dns is off (MagicDNS would put
+# 100.100.100.100 into resolved), so tailnet names resolve from here instead.
+100.116.54.77	sentrygate
+100.78.28.104	towerofpower
+100.120.180.99	samba-vm

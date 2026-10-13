@@ -1,0 +1,63 @@
+# Pushes alternative-browser installs the moment pacman finishes, instead of
+# up to a minute later from the guard loop. Targets mirror
+# BROWSER_PKG_PATTERNS in sentry-dns-guard.py -- keep the two in step.
+# The hook command always exits 0; it never blocks a transaction.
+
+[Trigger]
+Operation = Install
+Type = Package
+Target = firefox
+Target = firefox-*
+Target = firefox*-bin
+Target = librewolf*
+Target = waterfox*
+Target = floorp*
+Target = zen-browser*
+Target = palemoon*
+Target = basilisk*
+Target = icecat*
+Target = seamonkey*
+Target = mullvad-browser*
+Target = tor-browser*
+Target = torbrowser-launcher
+Target = brave*
+Target = google-chrome*
+Target = chromium-dev*
+Target = chromium-beta*
+Target = chromium-snapshot*
+Target = ungoogled-chromium*
+Target = thorium*
+Target = cromite*
+Target = vivaldi*
+Target = opera*
+Target = microsoft-edge*
+Target = yandex-browser*
+Target = helium-browser*
+Target = supermium*
+Target = epiphany*
+Target = falkon*
+Target = qutebrowser*
+Target = midori*
+Target = konqueror
+Target = nyxt*
+Target = luakit*
+Target = surf
+Target = vimb*
+Target = badwolf*
+Target = ladybird*
+Target = netsurf*
+Target = dillo*
+Target = angelfish
+Target = min-browser*
+Target = servo*
+Target = mercury-browser*
+Target = lynx
+Target = w3m
+Target = links
+Target = elinks
+
+[Action]
+Description = Reporting alternative browser installs (sentry-dns-guard)
+When = PostTransaction
+Exec = /usr/local/sbin/sentry-dns-guard pacman-hook
+NeedsTargets

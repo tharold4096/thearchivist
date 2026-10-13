@@ -1,0 +1,32 @@
+#!/bin/bash
+# run-claude: one headless Claude diagnosis, as user `rclaude`.
+# Installed /usr/local/lib/responder/run-claude (root:root 755). The responder may run it via
+# sudoers (`responder ALL=(rclaude) NOPASSWD: /usr/local/lib/responder/run-claude ""`, no
+# arguments allowed) but cannot change these flags. Prompt on stdin, JSON result on stdout.
+set -eu
+umask 077
+export PATH=/usr/local/bin:/usr/bin:/bin
+export LC_ALL=C.UTF-8
+export HOME=/var/lib/rclaude
+set -a
+. /etc/responder/claude.env   # CLAUDE_CODE_OAUTH_TOKEN (root:rclaude 640)
+set +a
+export DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+WORK=$(mktemp -d /var/lib/rclaude/work/XXXXXX)
+trap 'rm -rf "$WORK"' EXIT
+cd "$WORK"
+
+ARGS=(
+    -p
+    --tools Bash
+    --allowedTools "Bash(gate-read:*)" "Bash(cmk-read:*)"
+    --permission-mode dontAsk
+    --setting-sources ""
+    --strict-mcp-config
+    --no-session-persistence
+    --output-format json
+    --json-schema "$(cat /opt/responder/diagnosis.schema.json)"
+    --system-prompt "$(cat /opt/responder/system-prompt.md)"
+)
+timeout 300 /opt/claude/claude "${ARGS[@]}"

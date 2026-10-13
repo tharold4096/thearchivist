@@ -1,0 +1,47 @@
+#!/bin/bash
+# thinpool-alert — push to ntfy when the local-lvm thin pool (pve/data) fills.
+# Alerts once per level crossed (70 warn, 85 urgent) and again when it drops back
+# below 70, so a full pool never looks like a quiet one. Runs from
+# thinpool-alert.timer every 15 min. Config (URL + token) in /etc/thinpool-alert.conf.
+# Test: THINPOOL_FORCE=1 thinpool-alert   (pushes a test message regardless of level)
+set -u
+POOL="pve/data"
+WARN=70
+URGENT=85
+STATE=/var/lib/thinpool-alert/level
+source /etc/thinpool-alert.conf   # NTFY_URL, NTFY_TOKEN
+
+push() { # title priority body
+  curl -fsS -m 20 -H "Title: $1" -H "Priority: $2" -H "Tags: floppy_disk" \
+       -H "Authorization: Bearer $NTFY_TOKEN" -d "$3" "$NTFY_URL" >/dev/null \
+    || { logger -t thinpool-alert "ntfy push failed: $1"; return 1; }
+}
+
+read -r data meta < <(LC_ALL=C lvs --noheadings -o data_percent,metadata_percent "$POOL" 2>/dev/null)
+if [[ -z "${data:-}" || -z "${meta:-}" ]]; then
+  push "thearchivist: thin pool check FAILED" high "Could not read $POOL usage with lvs." ; exit 1
+fi
+d=${data%.*}; m=${meta%.*}
+worst=$(( d > m ? d : m ))
+body="$POOL data ${data}%  metadata ${meta}%  (warn ${WARN}, urgent ${URGENT})"
+
+if [[ -n "${THINPOOL_FORCE:-}" ]]; then
+  push "thearchivist: thin pool alert TEST" default "Test push. $body"; exit $?
+fi
+
+if   (( worst >= URGENT )); then level=2
+elif (( worst >= WARN ));   then level=1
+else level=0; fi
+mkdir -p "${STATE%/*}"
+prev=$(cat "$STATE" 2>/dev/null || echo 0)
+
+if (( level > prev )); then
+  if (( level == 2 )); then
+    push "thearchivist: thin pool ${worst}% — URGENT" urgent "$body. Full pool freezes every guest on local-lvm. Free space or extend now." || exit 1
+  else
+    push "thearchivist: thin pool ${worst}%" high "$body. Check before adding guests or snapshots." || exit 1
+  fi
+elif (( level == 0 && prev > 0 )); then
+  push "thearchivist: thin pool back to ${worst}%" low "$body. Recovered below warn." || exit 1
+fi
+echo "$level" > "$STATE"

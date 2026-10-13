@@ -1,0 +1,8 @@
+# Appended to /etc/caddy/Caddyfile on CT 103 (caddy), 2026-10-12.
+# Backup: /etc/caddy/Caddyfile.bak-20261012-checkmk
+# DNS: Unbound host override on sentrygate  checkmk.home.arpa -> 192.168.10.201
+
+checkmk.home.arpa {
+   redir / /monitoring/
+   reverse_proxy 192.168.10.215:80
+}
