@@ -308,6 +308,7 @@ def main():
         log.warning("job=%s was executing at shutdown: closed as interrupted", job_id)
     conn.close()
     spawn(sweeper)
+    journal.flush_async()  # push anything queued before a restart or power cycle
     srv = ThreadingHTTPServer((BIND, PORT), Handler)
     log.info("listening on %s:%d, registry hosts=%s", BIND, PORT, sorted(REGISTRY.hosts))
     srv.serve_forever()

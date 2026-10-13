@@ -46,7 +46,11 @@ VERB=${ARGS[0]}
 # Run a command, cap its output, and keep the command's own exit code.
 run() {
     "$@" 2>&1 | head -c "$MAXOUT"
-    return "${PIPESTATUS[0]}"
+    local rc=${PIPESTATUS[0]}
+    # 141 = SIGPIPE: the output was longer than MAXOUT and head stopped reading. That is
+    # truncation by design, not a failure of the command.
+    [ "$rc" -eq 141 ] && rc=0
+    return "$rc"
 }
 
 health_summary() {
