@@ -1,4 +1,4 @@
-"""Tests for store.py. Run from configs/responder: python3 -m unittest discover -s tests -v"""
+"""Tests for store.py. Run from hosts/responder: python3 -m unittest discover -s tests -v"""
 import os
 import sys
 import tempfile

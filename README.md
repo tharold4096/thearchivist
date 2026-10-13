@@ -64,12 +64,32 @@ Sentry Gate currently runs on a single interface as a staging environment. It is
 
 ## Repo contents
 
-| Document | What's in it |
+```
+docs/overview/     what the lab is: project plan, implementation tracker, hardware, design context
+docs/build/        the July 2026 build-out, in order: install steps 01-09, build log, boot and network work
+docs/writeups/     dated operations writeups (Sept 2026 onward), one per change; WRITEUP_TEMPLATE.md
+hosts/<machine>/   every config fragment, filed under the machine it is deployed on
+  thearchivist/    Proxmox host: weekly patch runner, thin-pool alerting, nightly poweroff, LXC DNS fix
+  sentrygate/      OPNsense: Wazuh agent buffering, DNS-blocklist log shipping
+  wazuh/           manager rules, LXC agent enrollment, index retention
+  checkmk/         monitoring: Caddy route, rule export, ntfy and responder notification plugins
+  ntfy/            push server: ACL layout, server config change
+  dns-audit/       configuration attestation script
+  omarchy/         admin laptop: DNS guard
+  responder/       CT 116: alert diagnosis by Claude with approval-gated remediation
+journal/responder/ incident records the responder publishes automatically
+```
+
+Secrets never live here: credentials and ntfy topic names are `<SET-ON-HOST>` placeholders, and each file names the host-side path that holds the real value.
+
+| Start with | What's in it |
 |---|---|
-| [`docs/build-log.md`](docs/build-log.md) | Chronological record of the work, session by session |
-| [`docs/opnsense-legacy-bios-boot.md`](docs/opnsense-legacy-bios-boot.md) | Getting a modern BSD firewall to boot on 2008 hardware — the longest and most instructive troubleshooting sequence in the project |
-| [`docs/remote-access-tailscale.md`](docs/remote-access-tailscale.md) | Mesh VPN access to the firewall, and debugging why a correct-looking rule silently dropped traffic |
-| [`docs/network-architecture.md`](docs/network-architecture.md) | Design decisions, addressing plan, DNS hardening, and what was deliberately left out |
+| [`docs/build/2026-07-27-build-log.md`](docs/build/2026-07-27-build-log.md) | Chronological record of the initial build, session by session |
+| [`docs/build/2026-07-28-opnsense-legacy-bios-boot.md`](docs/build/2026-07-28-opnsense-legacy-bios-boot.md) | Getting a modern BSD firewall to boot on 2008 hardware: the longest and most instructive troubleshooting sequence in the project |
+| [`docs/build/2026-07-29-remote-access-tailscale.md`](docs/build/2026-07-29-remote-access-tailscale.md) | Mesh VPN access to the firewall, and debugging why a correct-looking rule silently dropped traffic |
+| [`docs/build/2026-07-29-network-architecture.md`](docs/build/2026-07-29-network-architecture.md) | Design decisions, addressing plan, DNS hardening, and what was deliberately left out |
+| [`docs/writeups/2026-10-12-checkmk-rollout.md`](docs/writeups/2026-10-12-checkmk-rollout.md) | Monitoring 17 hosts with Checkmk and a dependency-aware alert path |
+| [`hosts/responder/README.md`](hosts/responder/README.md) | The responder: trust boundary, approval flow, learned approvals |
 
 ---
 

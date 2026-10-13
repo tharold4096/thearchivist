@@ -19,7 +19,7 @@
 
 * **Tools/stack:**
 * **Key steps:**
-* **Config/scripts:** *(relative repo links, e.g. `../configs/wazuh-agent.conf`)*
+* **Config/scripts:** *(relative repo links, e.g. `../../hosts/<host>/<file>`)*
 
 ## What broke
 

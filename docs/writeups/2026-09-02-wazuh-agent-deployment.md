@@ -210,7 +210,7 @@ firewall_written   0        <-- flat
 
 Fix is a **child rule**, not an overwrite — `no_log` suppresses only the rule
 that declares it, and a child rule is not reverted by a ruleset upgrade. See
-`configs/wazuh-manager/local_rules.xml` (rules `100110`–`100116`).
+`hosts/wazuh/local_rules.xml` (rules `100110`–`100116`).
 
 ---
 
@@ -264,7 +264,7 @@ The plugin's `ossec.conf` template hardcodes `queue_size 5000`, then globs
 `<client_buffer>` block — and the later block wins. Do not hand-edit
 `ossec.conf`; it is regenerated on every apply.
 
-Deploy `configs/sentrygate/ossec_config.d/010-client-buffer.conf`, then:
+Deploy `hosts/sentrygate/ossec_config.d/010-client-buffer.conf`, then:
 
 ```sh
 configctl template reload OPNsense/WazuhAgent
@@ -317,7 +317,7 @@ dnsbl_module: attempting to open pipe
 dnsbl_module: no logging backend found.
 ```
 
-The bridge (`configs/sentrygate/unbound-dnsbl-wazuh.py`) attaches to that FIFO,
+The bridge (`hosts/sentrygate/unbound-dnsbl-wazuh.py`) attaches to that FIFO,
 keeps only genuine blocks, and emits JSON lines. Using `log_format json` means
 Wazuh's **built-in JSON decoder** extracts every field — no custom decoder at all.
 
@@ -537,7 +537,7 @@ To upgrade deliberately: upgrade the manager stack in LXC 104 first, then
 
 An OPNsense config restore onto fresh media brings back `config.xml` **and
 nothing else**. Everything below must be replaced by hand. All are mirrored in
-`configs/sentrygate/` in this repo except the two secrets.
+`hosts/sentrygate/` in this repo except the two secrets.
 
 | File | Purpose | In repo? |
 |---|---|---|

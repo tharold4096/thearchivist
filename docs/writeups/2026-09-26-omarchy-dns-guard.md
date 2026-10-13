@@ -30,7 +30,7 @@
   config files by content and inode/ctime, live resolver state, direct-DNS
   probes, VPN/tunnel/exit-node use, and alternative browsers. Pacman hook pushes
   browser installs immediately. Failed pushes queue to disk and retry via DoH-by-IP.
-* **Config/scripts:** [`2026-09-26-omarchy-dns-guard/`](2026-09-26-omarchy-dns-guard/)
+* **Config/scripts:** [`hosts/omarchy/dns-guard/`](../../hosts/omarchy/dns-guard/)
   -- the guard script itself lives in `omarchy-monitor/dns-guard/` and is not
   copied here because it carries the ntfy topic (`<SET-ON-HOST>` in any public copy;
   the real value is in `/usr/local/lib/sentry-dns-guard/sentry-dns-guard.py`).

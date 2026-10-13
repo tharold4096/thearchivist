@@ -37,7 +37,7 @@ Before this, only the manager (CT 104), Sentry Gate, the Archivist host and samb
   * The manager's `authd.pass` was copied to a mode-600 temp file on the host and pushed to each CT only for the duration of the install.
   * It was deleted in each CT right after enrollment (checked per CT), and the host copy was `shred`ded.
   * It never appeared in terminal output and is not in this repo.
-* **Config/scripts:** [`wazuh-lxc-agents/wz-enroll.sh`](wazuh-lxc-agents/wz-enroll.sh). It expects `/root/.wz-enroll.pass` on the host (`<SET-ON-HOST>`, sourced from CT 104 `/var/ossec/etc/authd.pass`).
+* **Config/scripts:** [`wazuh-lxc-agents/wz-enroll.sh`](../../hosts/wazuh/lxc-agents/wz-enroll.sh). It expects `/root/.wz-enroll.pass` on the host (`<SET-ON-HOST>`, sourced from CT 104 `/var/ossec/etc/authd.pass`).
 * **Also, Vaultwarden sshd disabled:** `systemctl disable --now ssh.socket ssh.service` in CT 200. Management goes through the Proxmox console (`pct enter 200`).
 
 ## What broke

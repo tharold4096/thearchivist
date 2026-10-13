@@ -48,11 +48,11 @@
   * Disabled the default HTML-email rule, since no user has an email address.
 * **Tuning:** rules are scoped to folders or hosts, nothing global. See What broke.
 * **Config/scripts:**
-  * `../../configs/checkmk/ntfy-notify.py`: notification plugin
-  * `../../configs/checkmk/caddy-checkmk.caddyfile`
-  * `../../configs/checkmk/ntfy-server.yml.diff`
-  * `../../configs/checkmk/ntfy-acl.md`
-  * `../../configs/checkmk/wato-rules-export.mk.txt`: every rule, with no secrets. `hosts.mk` is deliberately not exported because it holds the SNMPv3 credentials.
+  * `../../hosts/checkmk/ntfy-notify.py`: notification plugin
+  * `../../hosts/checkmk/caddy-checkmk.caddyfile`
+  * `../../hosts/ntfy/ntfy-server.yml.diff`
+  * `../../hosts/ntfy/ntfy-acl.md`
+  * `../../hosts/checkmk/wato-rules-export.mk.txt`: every rule, with no secrets. `hosts.mk` is deliberately not exported because it holds the SNMPv3 credentials.
 
 ## What broke
 
