@@ -31,8 +31,8 @@
     `ntfy access --reset homelab homelab-updates-<SET-ON-HOST>`.
   * Hardening found during verification: `/var/lib/ntfy/user.db` (users and tokens) was
     `644`. It is now `600 ntfy:ntfy`.
-* **Config/scripts:** `../../configs/checkmk/ntfy-acl.md`, `homelab-update/homelab-update`,
-  `2026-09-28-thinpool-guard/thinpool-alert.conf`. Topic names and tokens stay `<SET-ON-HOST>`.
+* **Config/scripts:** `../../hosts/ntfy/ntfy-acl.md`, `hosts/thearchivist/homelab-update/homelab-update`,
+  `hosts/thearchivist/thinpool-guard/thinpool-alert.conf`. Topic names and tokens stay `<SET-ON-HOST>`.
 
 ## What broke
 

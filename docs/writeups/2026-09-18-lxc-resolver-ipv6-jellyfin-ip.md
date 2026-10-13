@@ -24,7 +24,7 @@ Follow-up to `lxc-dns-ipv6-context.md`. Three faults on the container fleet:
   * Each CT: `pct set <id> --nameserver 192.168.10.1 --searchdomain home.arpa` on 100, 102–112, 114 and 200, set explicitly so a future host change can't silently redirect them again.
   * Running CTs had the same PVE block written into `/etc/resolv.conf` live. PVE regenerates it from config at the next start.
 * **CT 113 deliberately excluded.** It keeps `10.128.0.1` (AirVPN tunnel-only DNS), which is the second fail-closed layer in the arr-stack design. On `.10.1` its tracker lookups would leave via `eth0` from the real IP.
-* **IPv6:** [`lxc-dns-ipv6/99-no-ipv6-eth0.conf`](lxc-dns-ipv6/99-no-ipv6-eth0.conf) goes at `/etc/sysctl.d/` in every CT (live via `sysctl -p`; stopped CTs 105/106/107 written via `pct mount`). Two scoping choices:
+* **IPv6:** [`lxc-dns-ipv6/99-no-ipv6-eth0.conf`](../../hosts/thearchivist/lxc-dns-ipv6/99-no-ipv6-eth0.conf) goes at `/etc/sysctl.d/` in every CT (live via `sysctl -p`; stopped CTs 105/106/107 written via `pct mount`). Two scoping choices:
   * An in-container file rather than `lxc.sysctl`, because CTs 102, 103 and 200 have snapshot sections and a line appended to their `.conf` would land inside the snapshot.
   * Scoped to `eth0` only: `::1` stays on loopback, and `wg0` on CT 113 is untouched.
 * **Jellyfin:** `net0` changed to `ip=192.168.10.207/24` (same MAC and gateway). Caddyfile line 6 now points at `192.168.10.207:8096`.

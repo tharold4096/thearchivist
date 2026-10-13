@@ -58,10 +58,10 @@ logs/
 # keys, password hashes and addressing. Wazuh rule and agent-config fragments
 # are also .xml but contain no credentials — they are rule logic only.
 # Each exception is listed individually and ON PURPOSE. Do not broaden this
-# to `!configs/**/*.xml`: that would let a future config export slip through
+# to `!hosts/**/*.xml`: that would let a future config export slip through
 # just by being dropped in the right directory.
-!configs/wazuh-manager/local_rules.xml
-!configs/thearchivist/ossec-additions.xml
+!hosts/wazuh/local_rules.xml
+!hosts/thearchivist/ossec-additions.xml
 
 # --- Python bytecode ---
 __pycache__/

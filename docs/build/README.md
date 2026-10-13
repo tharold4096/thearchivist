@@ -34,5 +34,5 @@ Roughly the order things happened, which is also the order that builds on itself
 ## When you're done
 
 - Replace every `_[...]_` prompt with your own writing, then delete the italics
-- Drop screenshots into a `screenshots/` folder alongside these and reference them in the Evidence section — `![description](screenshots/whatever.png)`
+- Drop screenshots into a `screenshots/` folder alongside these and reference them in the Evidence section — `![description](screenshots/<file>.png)` (example syntax)
 - Consider a top-level `README.md` for the repo that links all nine as a table of contents, similar to what's already in your `homelab-docs` folder — these can slot in as the detailed appendix behind that front page

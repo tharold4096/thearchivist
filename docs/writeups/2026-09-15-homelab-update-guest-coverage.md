@@ -71,11 +71,11 @@ An audit of the 2026-09-13 Sunday patch run found three problems in
     reports. It writes only `<stamp>.dry.md`.
 * **Other host changes:** `pct set 100 --onboot 1` (jellyfin now starts at
   boot); `apt-mark hold wazuh-agent` inside VM 101; `pct fstrim 104`.
-* **Config/scripts:** [`homelab-update/homelab-update`](homelab-update/homelab-update)
+* **Config/scripts:** [`hosts/thearchivist/homelab-update/homelab-update`](../../hosts/thearchivist/homelab-update/homelab-update)
   (repo copy with `NTFY_TOKEN="<SET-ON-HOST>"`; the real token lives only in
   `/usr/local/sbin/homelab-update` on the Archivist),
-  [`homelab-update.timer`](homelab-update/homelab-update.timer),
-  [`homelab-update.service`](homelab-update/homelab-update.service).
+  [`homelab-update.timer`](../../hosts/thearchivist/homelab-update/homelab-update.timer),
+  [`homelab-update.service`](../../hosts/thearchivist/homelab-update/homelab-update.service).
   Deployed sha256 `f377474e…` (differs from the repo copy only on the token
   line). Backups in `/usr/local/sbin/`: `.bak-pre-guestcoverage-20260915`
   (pre-rework), `.bak-pre-nosnapshot-20260915` (`82879c3e…`),

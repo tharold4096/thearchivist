@@ -24,8 +24,8 @@
   fields). `run()` pushes only alerts with no standing key, then sets standing to
   exactly the current alerts.
 * `--quiet` runs neither push nor mark.
-* Files: [`attest.py`](2026-09-26-attest-youtube-exemption-and-one-shot-alerts/attest.py),
-  [diff](2026-09-26-attest-youtube-exemption-and-one-shot-alerts/attest.diff).
+* Files: [`attest.py`](../../hosts/dns-audit/attest.py),
+  [diff](../../hosts/dns-audit/attest.diff).
   Backup on host: `attest.py.bak-2026-09-26`.
 
 ## When it fires (exact rule)

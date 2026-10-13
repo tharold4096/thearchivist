@@ -9,6 +9,7 @@ The repo is PUBLIC, so:
   - arr-stack hosts are never published (house rule: arr docs stay local)
 Failures never block alert handling. An auth failure pings the phone (at most every 6 h).
 """
+import json
 import logging
 import os
 import re
@@ -23,6 +24,7 @@ log = logging.getLogger("responder.journal")
 REPO_URL = os.environ.get("JOURNAL_REPO", "git@github.com:tharold4096/thearchivist.git")
 BRANCH = os.environ.get("JOURNAL_BRANCH", "main")
 CLONE = "/var/lib/responder/journal-repo"
+QUEUE = "/var/lib/responder/journal-queue"  # records not yet pushed; survives restarts
 SUBDIR = "journal/responder"
 SSH = ("ssh -i /home/responder/.ssh/journal_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes"
        " -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/responder/known_hosts_github")
@@ -77,41 +79,54 @@ def _auth_problem(stderr):
             _last_auth_ping = time.time()
             notify.publish("Responder journal: GitHub auth needed",
                            "The responder can't push its journal to the repo (deploy key rejected or"
-                           " missing). Records are queued locally on CT 116 until it works.",
+                           " missing). Records are queued on CT 116 and go out once it works.",
                            priority="high", tags=["key"])
 
 
-def _publish(relpath, text, message):
+def _flush():
+    """Push every queued record. Never rebases: reset to the remote tip, re-apply the queue, push.
+
+    A depth-1 clone has no merge base, so rebasing onto a moved main fails. Resetting and
+    re-appending is always valid because records only ever append to per-job files. Queue
+    entries are deleted only after a successful push, so auth outages and power cycles lose nothing.
+    """
     with _lock:
         err = _ensure_clone()
         if err:
             return _auth_problem(err)
-        # Rebase, never reset: commits that failed to push earlier (e.g. auth outage) stay
-        # queued on top and go out with the next successful push.
-        if _git("fetch", "--depth", "1", "origin", BRANCH).returncode == 0:
-            if _git("rebase", f"origin/{BRANCH}").returncode != 0:
-                _git("rebase", "--abort")
-        path = os.path.join(CLONE, relpath)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "a") as f:
-            f.write(text)
-        _git("add", "--sparse", relpath)
-        r = _git("commit", "-q", "-m", message)
-        if r.returncode != 0:
-            log.error("journal commit failed: %s", (r.stdout + r.stderr).strip()[-300:])
-            return
         for _ in range(3):
+            entries = sorted(n for n in os.listdir(QUEUE) if n.endswith(".json")) if os.path.isdir(QUEUE) else []
+            if not entries:
+                return
+            r = _git("fetch", "--depth", "1", "origin", BRANCH)
+            if r.returncode != 0:
+                return _auth_problem(r.stderr)
+            _git("reset", "-q", "--hard", f"origin/{BRANCH}")
+            messages = []
+            for name in entries:
+                with open(os.path.join(QUEUE, name)) as f:
+                    e = json.load(f)
+                path = os.path.join(CLONE, e["relpath"])
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "a") as f:
+                    f.write(e["text"])
+                _git("add", "--sparse", e["relpath"])
+                messages.append(e["message"])
+            msg = messages[0] if len(messages) == 1 else f"journal: {len(messages)} records\n\n" + "\n".join(messages)
+            r = _git("commit", "-q", "-m", msg)
+            if r.returncode != 0:
+                log.error("journal commit failed: %s", (r.stdout + r.stderr).strip()[-300:])
+                return
             r = _git("push", "-q", "origin", f"HEAD:{BRANCH}")
             if r.returncode == 0:
-                log.info("journal pushed %s", relpath)
+                for name in entries:
+                    os.remove(os.path.join(QUEUE, name))
+                log.info("journal pushed %d record(s)", len(entries))
                 return
-            if "rejected" in r.stderr or "fetch first" in r.stderr:
-                _git("fetch", "--depth", "1", "origin", BRANCH)
-                if _git("rebase", f"origin/{BRANCH}").returncode != 0:
-                    _git("rebase", "--abort")
-                continue
-            return _auth_problem(r.stderr)
-        log.error("journal push gave up after retries: %s", relpath)
+            if "rejected" not in r.stderr and "fetch first" not in r.stderr:
+                return _auth_problem(r.stderr)
+            time.sleep(2)  # main moved under us (e.g. a PR merge): reset and re-apply
+        log.error("journal push still rejected after retries; %d record(s) stay queued", len(entries))
 
 
 def record(job, event, body):
@@ -129,11 +144,20 @@ def record(job, event, body):
                   " Written automatically by the responder on CT 116.\n\n")
     text = header + f"## {stamp}: {event}\n\n{scrub(body).strip()}\n\n"
     msg = f"journal: {job['host']} {event} ({job['id']})"
-    threading.Thread(target=_safe_publish, args=(relpath, text, msg), daemon=True).start()
+    os.makedirs(QUEUE, exist_ok=True)
+    name = f"{time.time_ns()}-{job['id']}.json"
+    with open(os.path.join(QUEUE, name + ".tmp"), "w") as f:
+        json.dump({"relpath": relpath, "text": text, "message": msg}, f)
+    os.rename(os.path.join(QUEUE, name + ".tmp"), os.path.join(QUEUE, name))
+    flush_async()
 
 
-def _safe_publish(relpath, text, message):
+def flush_async():
+    threading.Thread(target=_safe_flush, daemon=True).start()
+
+
+def _safe_flush():
     try:
-        _publish(relpath, text, message)
+        _flush()
     except Exception:
-        log.exception("journal publish crashed")
+        log.exception("journal flush crashed")
