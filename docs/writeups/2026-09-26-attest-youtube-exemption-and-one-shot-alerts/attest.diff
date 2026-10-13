@@ -1,0 +1,119 @@
+--- attest.py.orig	2026-09-26 11:36:27.986857631 -0500
++++ attest.py	2026-09-26 11:36:54.128225304 -0500
+@@ -56,6 +56,18 @@
+ }
+ 
+ 
++# Standing exception, the owner's, dated 2026-09-12. YouTube stays blocked by
++# default as friction; removing exactly these entries from exactly these
++# fields (to watch coursework video) does not notify. Nothing else is covered:
++# not other domains, not a YouTube string inside a list URL, not allowlist
++# additions. Restoring them is always permitted. Keep in agreement with the
++# policy table in the owner's operating notes.
++EXEMPT_REMOVALS = {
++    "wildcards":  {"youtube.com"},
++    "blocklists": {"ytimg.com", "youtu.be"},
++}
++
++
+ def policy_for(field: str) -> str | None:
+     """Resolve the rule for a field path."""
+     if field in POLICY:
+@@ -99,6 +111,13 @@
+   value       TEXT NOT NULL,
+   captured_at TEXT NOT NULL
+ );
++-- Alerts already pushed and still present. An alert is pushed once, the
++-- first run it appears; it stays silent while it persists; if it clears and
++-- later comes back, it is pushed again.
++CREATE TABLE IF NOT EXISTS attest_standing(
++  key         TEXT PRIMARY KEY,
++  notified_at TEXT NOT NULL
++);
+ CREATE TABLE IF NOT EXISTS attest_finding(
+   id          INTEGER PRIMARY KEY AUTOINCREMENT,
+   detected_at TEXT NOT NULL,
+@@ -190,9 +209,18 @@
+         elif pol == "list_removal_bad":
+             o, n_ = _as_set(old), _as_set(live[field])
+             gone, added = sorted(o - n_), sorted(n_ - o)
++            exempt_set = (EXEMPT_REMOVALS.get(field.rsplit("/", 1)[1], set())
++                          if field.startswith("dnsbl/") else set())
++            exempt = [g for g in gone if g in exempt_set]
++            gone = [g for g in gone if g not in exempt_set]
+             if gone:
+                 findings.append({"field": field, "severity": "alert",
++                                 "label": "REMOVED from blocklist", "items": gone,
+                                  "detail": f"REMOVED from blocklist: {', '.join(gone)}"})
++            if exempt:
++                findings.append({"field": field, "severity": "note",
++                                 "detail": "removed under the standing YouTube "
++                                           f"exception (2026-09-12): {', '.join(exempt)}"})
+             if added:
+                 findings.append({"field": field, "severity": "note",
+                                  "detail": f"added (permitted): {', '.join(added)}"})
+@@ -201,6 +229,7 @@
+             gone, added = sorted(o - n_), sorted(n_ - o)
+             if added:
+                 findings.append({"field": field, "severity": "alert",
++                                 "label": "ADDED to allowlist", "items": added,
+                                  "detail": f"ADDED to allowlist: {', '.join(added)}"})
+             if gone:
+                 findings.append({"field": field, "severity": "note",
+@@ -248,9 +277,53 @@
+     if findings:
+         record(con, findings)
+     alerts = [f for f in findings if f["severity"] == "alert"]
+-    if alerts and notify_fn:
+-        body = "\n".join(f"{f['field']}: {f['detail']}" for f in alerts)
++    fresh = fresh_alerts(con, alerts)
++    if fresh and notify_fn:
++        body = "\n".join(f"{f['field']}: {f['detail']}" for f in fresh)
+         notify_fn("CONFIGURATION CHANGE ON SENTRY\n\n" + body,
+                   title="DNS audit: blocking config altered", priority=5,
+                   tags="rotating_light")
+-    return {"ok": True, "reason": "", "findings": findings, "alerts": len(alerts)}
++    if notify_fn:
++        # A failed send is queued durably by notify.send, so it still counts
++        # as reported. A --quiet run reports nothing and marks nothing.
++        mark_standing(con, alerts)
++    return {"ok": True, "reason": "", "findings": findings,
++            "alerts": len(alerts), "notified": len(fresh) if notify_fn else 0}
++
++
++def _alert_keys(f: dict) -> list[str]:
++    """One key per list entry, so a later removal does not re-announce an
++    earlier one; one key per finding otherwise."""
++    if "items" in f:
++        return [f"{f['field']}|{f['label']}|{i}" for i in f["items"]]
++    return [f"{f['field']}|{f['detail']}"]
++
++
++def fresh_alerts(con, alerts: list[dict]) -> list[dict]:
++    """The alerts, trimmed to what has not been pushed while standing."""
++    standing = {r[0] for r in con.execute("SELECT key FROM attest_standing")}
++    out = []
++    for f in alerts:
++        if "items" in f:
++            new = [i for i in f["items"]
++                   if f"{f['field']}|{f['label']}|{i}" not in standing]
++            if new:
++                out.append({**f, "items": new,
++                            "detail": f"{f['label']}: {', '.join(new)}"})
++        elif _alert_keys(f)[0] not in standing:
++            out.append(f)
++    return out
++
++
++def mark_standing(con, alerts: list[dict]) -> None:
++    """Standing = exactly the alerts present now. Cleared ones are dropped,
++    so a change that is undone and later redone is pushed again."""
++    keys = {k for f in alerts for k in _alert_keys(f)}
++    now = store.now()
++    con.execute("DELETE FROM attest_standing WHERE key NOT IN (%s)"
++                % ",".join("?" * len(keys)) if keys else
++                "DELETE FROM attest_standing", tuple(keys))
++    for k in keys:
++        con.execute("INSERT INTO attest_standing(key, notified_at) VALUES(?,?) "
++                    "ON CONFLICT(key) DO NOTHING", (k, now))
++    con.commit()

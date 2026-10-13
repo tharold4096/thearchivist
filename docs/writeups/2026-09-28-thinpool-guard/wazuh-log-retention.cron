@@ -1,0 +1,2 @@
+# /etc/cron.d/wazuh-log-retention (CT 104) — prune rotated Wazuh alert/archive logs after 90 days
+0 3 * * * root find /var/ossec/logs/alerts /var/ossec/logs/archives -type f -mtime +90 -delete
