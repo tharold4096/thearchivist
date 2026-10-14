@@ -305,7 +305,9 @@ update_host() {
 trim_cts() {
   local id nm out before after
   before="$(pool_usage | awk '{print $1}')"
-  for id in "${LXC_IDS[@]}"; do
+  # Every running CT, not just the patched LXC_IDS: the arr stack, immich and
+  # the monitoring CTs churn the pool too (113 held 6 GiB on 2026-10-13).
+  for id in $(pct list | awk 'NR>1 && $2=="running" {print $1}'); do
     nm="$(name_of_ct "$id")"
     [[ "$(pct status "$id" 2>/dev/null | awk '{print $2}')" == "running" ]] || continue
     if $DRY; then log "- DRY: would fstrim $nm ($id)"; continue; fi
