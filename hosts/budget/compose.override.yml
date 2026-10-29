@@ -1,0 +1,5 @@
+# /opt/sure/compose.override.yml on VM 106 (budget). Delete once the Sure image ships bin/sure-backup itself.
+services:
+  backup:
+    volumes:
+      - ./bin/sure-backup:/rails/bin/sure-backup:ro
