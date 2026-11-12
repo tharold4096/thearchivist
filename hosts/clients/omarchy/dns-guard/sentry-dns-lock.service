@@ -1,0 +1,19 @@
+[Unit]
+Description=Sentry DNS lock -- reject DNS to anything but Sentry Gate
+# DefaultDependencies=no: without it this unit is ordered after basic.target
+# while also Before=systemd-resolved (a sysinit unit) -- an ordering cycle
+# that made systemd drop resolved and dbus at boot.
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target systemd-resolved.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/sentry-dns-guard/lock.nft
+# No ExecStop on purpose: stopping the unit does not open the lock. Removing
+# the table is a deliberate `nft delete table`, which the guard reports.
+
+[Install]
+WantedBy=multi-user.target

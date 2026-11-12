@@ -1,0 +1,15 @@
+{
+  "title": "Homelab",
+  "summary.counts": "%1 of %2 up",
+  "summary.checked": "%1 of %2 up · checked %3",
+  "summary.checking": "Checking…",
+  "summary.unreachable": "Lab unreachable · checked %1",
+  "summary.none": "No hosts configured. Add a hosts list to this widget in ~/.config/omarchy/shell.json.",
+  "row.down": "down",
+  "row.pending": "…",
+  "row.ms": "%1 ms",
+  "refresh": "Check now",
+  "tooltip.counts": "Homelab: %1 of %2 up",
+  "tooltip.unknown": "Homelab",
+  "row.partial": "no service"
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=Stop the responder (CT 116) before other guests so host shutdown does not page Claude
+# Units stop in reverse start order: being After= pve-guests means this ExecStop
+# runs before pve-guests stops the rest, on every host shutdown/reboot.
+After=pve-guests.service
+Requires=pve-cluster.service
+After=pve-cluster.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/bin/sh -c "pct status 116 | grep -q running && pct shutdown 116 --timeout 60 || true"
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

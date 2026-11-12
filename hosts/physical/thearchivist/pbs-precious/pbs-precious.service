@@ -1,0 +1,14 @@
+[Unit]
+Description=PBS file-level backup of precious data on archive mirror
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/mnt/pve/archive
+StartLimitIntervalSec=1h
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+EnvironmentFile=/root/.pbs-precious.env
+ExecStart=/usr/bin/proxmox-backup-client backup immich.pxar:/mnt/pve/archive/immich takeout.pxar:/mnt/pve/archive/takeout dnslogs.pxar:/mnt/pve/archive/dnslogs --backup-type host --backup-id archive-precious
+Restart=on-failure
+RestartSec=300

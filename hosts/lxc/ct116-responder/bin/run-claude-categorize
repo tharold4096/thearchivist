@@ -1,0 +1,32 @@
+#!/bin/bash
+# run-claude-categorize: one headless Claude categorization pass, as user `rclaude`.
+# Installed /usr/local/lib/responder/run-claude-categorize (root:root 755). The responder may run
+# it via sudoers (no arguments allowed) but cannot change these flags. Unlike run-claude, Claude
+# gets NO tools at all: transactions in on stdin, JSON verdict out on stdout. The Sure API key is
+# never loaded here, and rclaude can't read /etc/responder/sure.env.
+set -eu
+umask 077
+export PATH=/usr/local/bin:/usr/bin:/bin
+export LC_ALL=C.UTF-8
+export HOME=/var/lib/rclaude
+set -a
+. /etc/responder/claude.env   # CLAUDE_CODE_OAUTH_TOKEN (root:rclaude 640)
+set +a
+export DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+WORK=$(mktemp -d /var/lib/rclaude/work/XXXXXX)
+trap 'rm -rf "$WORK"' EXIT
+cd "$WORK"
+
+ARGS=(
+    -p
+    --tools ""
+    --permission-mode dontAsk
+    --setting-sources ""
+    --strict-mcp-config
+    --no-session-persistence
+    --output-format json
+    --json-schema "$(cat /opt/responder/categorize.schema.json)"
+    --system-prompt "$(cat /opt/responder/categorize-prompt.md)"
+)
+timeout 300 /opt/claude/claude "${ARGS[@]}"

@@ -1,0 +1,1 @@
+55 22 * * * root /usr/local/sbin/nightly-poweroff.sh

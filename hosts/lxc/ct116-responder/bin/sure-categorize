@@ -1,0 +1,17 @@
+#!/bin/bash
+# sure-categorize: run categorize.py by hand, as `responder`, with the same env files the
+# systemd unit uses. Installed /usr/local/sbin/sure-categorize (root:root 755); run as root on CT 116.
+#   sure-categorize --check            read-only: key, TLS pin, counts
+#   sure-categorize --dry-run          full pass with Claude, writes nothing, saves a report
+#   sure-categorize --report [FILE]    print the latest (or a given) report
+#   sure-categorize --transfers        read-only trace of transfers: linked, unlinked and why, external
+#   sure-categorize --revert FILE      undo one apply run (names exactly; categories where Sure allows)
+# For a real scheduled-style run use: systemctl start sure-categorize.service
+set -eu
+[ "$(id -u)" = 0 ] || { echo "run as root on CT 116" >&2; exit 1; }
+case "${1:-}" in
+    --check | --dry-run | --report | --revert | --transfers) ;;
+    *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
+cd /opt/responder
+exec sudo -u responder bash -c 'set -a; . /etc/responder/responder.env; . /etc/responder/sure.env; set +a; exec /usr/bin/python3 -E -s /opt/responder/categorize.py "$@"' sure-categorize "$@"

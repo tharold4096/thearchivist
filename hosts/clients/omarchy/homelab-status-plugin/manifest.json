@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "id": "tobias.homelab",
+  "name": "Homelab Status",
+  "version": "0.2.0",
+  "author": "Tobias Harold",
+  "license": "MIT",
+  "description": "Bar icon showing whether homelab hosts answer on a TCP port, with a panel listing each one in green, yellow or red. Opens one short TCP connection per host from this machine, plus one ping to a host whose port does not answer; sends no data and writes no files. Background checks can be turned off.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Homelab Status",
+    "description": "Icon that turns red when a homelab host stops answering, with a per-host panel",
+    "category": "Network",
+    "aliases": [
+      "homelab",
+      "hosts",
+      "uptime"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "backgroundRefresh": true,
+      "refreshIntervalSec": 60,
+      "hosts": [
+        {
+          "name": "sentrygate",
+          "host": "192.168.10.1",
+          "port": 443
+        },
+        {
+          "name": "thearchivist",
+          "host": "192.168.10.202",
+          "port": 8006
+        },
+        {
+          "name": "caddy",
+          "host": "192.168.10.201",
+          "port": 443
+        },
+        {
+          "name": "ntfy",
+          "host": "192.168.10.203",
+          "port": 80
+        },
+        {
+          "name": "wazuh",
+          "host": "192.168.10.204",
+          "port": 443
+        },
+        {
+          "name": "budget",
+          "host": "192.168.10.206",
+          "port": 3000
+        },
+        {
+          "name": "jellyfin",
+          "host": "192.168.10.207",
+          "port": 8096
+        },
+        {
+          "name": "checkmk",
+          "host": "192.168.10.215",
+          "port": 80
+        },
+        {
+          "name": "responder",
+          "host": "192.168.10.216",
+          "port": 22
+        },
+        {
+          "name": "pbs",
+          "host": "192.168.10.220",
+          "port": 8007
+        }
+      ],
+      "slowMs": 250
+    },
+    "schema": [
+      {
+        "key": "backgroundRefresh",
+        "type": "boolean",
+        "label": "Check in the background (off: only while the panel is open)",
+        "defaultValue": true
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Check interval (seconds)",
+        "min": 15,
+        "max": 3600,
+        "step": 15,
+        "defaultValue": 60
+      },
+      {
+        "key": "slowMs",
+        "type": "integer",
+        "label": "Slow threshold (ms): slower answers turn yellow",
+        "min": 20,
+        "max": 3000,
+        "step": 10,
+        "defaultValue": 250
+      }
+    ]
+  }
+}

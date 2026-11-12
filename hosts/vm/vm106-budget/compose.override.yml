@@ -1,0 +1,10 @@
+# /opt/sure/compose.override.yml on VM 106 (budget).
+# backup: delete this block once the Sure image ships bin/sure-backup itself.
+# web: 2 Puma workers so parallel requests (sparklines, turbo frames) do not queue on one GVL. 2026-11-02.
+services:
+  backup:
+    volumes:
+      - ./bin/sure-backup:/rails/bin/sure-backup:ro
+  web:
+    environment:
+      WEB_CONCURRENCY: "2"
