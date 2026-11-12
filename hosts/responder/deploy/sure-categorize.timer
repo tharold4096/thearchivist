@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Sure categorization at 09:00 Central (host is up 07:45-23:00)
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+# If the host was down at 09:00, run once after it comes back.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

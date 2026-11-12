@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "properties": {
+    "assignments": {
+      "type": "array",
+      "description": "Exactly one entry per transaction ref in the request.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "The transaction's ref, e.g. t7."
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "A category name copied exactly from the list, or null if none fits or a category wasn't asked for."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "A short clean display name (max 40 characters), or null if a name wasn't asked for or you can't tell."
+          }
+        },
+        "required": [
+          "ref",
+          "category",
+          "name",
+          "confidence"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "assignments"
+  ],
+  "additionalProperties": false
+}

@@ -1,5 +1,10 @@
 [Unit]
 Description=Sentry DNS lock -- reject DNS to anything but Sentry Gate
+# DefaultDependencies=no: without it this unit is ordered after basic.target
+# while also Before=systemd-resolved (a sysinit unit) -- an ordering cycle
+# that made systemd drop resolved and dbus at boot.
+DefaultDependencies=no
+After=local-fs.target
 Before=network-pre.target systemd-resolved.service
 Wants=network-pre.target
 

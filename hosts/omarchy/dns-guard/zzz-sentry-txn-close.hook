@@ -1,0 +1,16 @@
+# Closes the window opened by 00-sentry-txn-open.hook. Named to sort after
+# every other PostTransaction hook (zz-snap-pac-post included), since hooks
+# like systemd-tmpfiles can rewrite /etc too.
+# The hook command always exits 0; it never blocks a transaction.
+
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Closing package-rewrite window (sentry-dns-guard)
+When = PostTransaction
+Exec = /usr/local/sbin/sentry-dns-guard txn-close

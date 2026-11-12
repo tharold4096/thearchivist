@@ -1,0 +1,26 @@
+[Unit]
+Description=Responder: categorize new Sure transactions (Claude proposes, code applies category_id only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=responder
+Group=responder
+# responder.env: ntfy URL/token. sure.env: SURE_BASE, SURE_API_KEY (read_write), SURE_CA,
+# SURE_CATEGORIZE_MODE, SURE_MIN_CONFIDENCE, SURE_MAX_PER_RUN. Both root:responder 640.
+EnvironmentFile=/etc/responder/responder.env
+EnvironmentFile=/etc/responder/sure.env
+WorkingDirectory=/opt/responder
+ExecStart=/usr/bin/python3 -E -s /opt/responder/categorize.py
+TimeoutStartSec=1800
+SyslogIdentifier=sure-categorize
+UMask=0077
+StateDirectory=responder
+StateDirectoryMode=0700
+NoNewPrivileges=no
+# NoNewPrivileges must stay off: Claude is started via sudo as `rclaude`.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/responder /var/lib/rclaude -/run/sudo
+ProtectHome=read-only
+PrivateTmp=yes

@@ -1,0 +1,16 @@
+# Opens the window in which sentry-dns-guard expects package rewrites of
+# watched /etc files (identical content, new inode/ctime). Paired with
+# zzz-sentry-txn-close.hook; named to run first and last respectively.
+# The hook command always exits 0; it never blocks a transaction.
+
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Opening package-rewrite window (sentry-dns-guard)
+When = PreTransaction
+Exec = /usr/local/sbin/sentry-dns-guard txn-open

@@ -36,6 +36,10 @@ trusted. Enforcement lives elsewhere:
 | `start_execution` guard | `store.py` | a second execution of the same job |
 | protected list | `registry.toml`, `grants.py` | remembering actions on security services or Vaultwarden |
 | nftables on :8787 | `deploy/nftables.conf` | anything but Sentry (tailnet) and Checkmk reaching the service |
+| Sure categorizer: `--tools ""` | `bin/run-claude-categorize` (root-owned) | Claude running anything at all; it only returns JSON |
+| Sure key in `sure.env` (root:responder 640) | CT 116 | Claude (`rclaude`) reading the read_write key (tested: permission denied) |
+| refs instead of IDs, `validate()`, re-read before PATCH | `categorize.py` | invented IDs or categories, overwriting a category set by you or a rule, any write other than `category_id` / `name` / `notes` |
+| `name_problem()`, raw-text guard, `SURE_RENAME_MODE` | `categorize.py`, `sure.env` | names with links, long numbers or markup; renaming anything you've edited; renaming before history imports are done |
 
 ## Files
 
@@ -53,7 +57,11 @@ trusted. Enforcement lives elsewhere:
 | `bin/gate-read`, `bin/cmk-read` | Claude's only tools |
 | `system-prompt.md`, `diagnosis.schema.json` | Claude's instructions and the required output shape |
 | `deploy/` | systemd unit, sudoers, nftables, the `rgate` gate for targets |
-| `tests/` | `python3 -m unittest discover -s tests` (store races, guards, grants) |
+| `categorize.py` | daily Sure transaction categorizer + renamer, and the read-only transfer trace (timer job, not part of the alert service) |
+| `bin/run-claude-categorize`, `categorize-prompt.md`, `categorize.schema.json` | its tool-less Claude call, instructions and output shape |
+| `bin/sure-categorize` | root helper for manual `--check`/`--dry-run`/`--report`/`--transfers`/`--revert` (`/usr/local/sbin`) |
+| `deploy/sure-categorize.{service,timer}` | oneshot + daily 09:00; setup and operation in `../budget/categorize-setup.md` |
+| `tests/` | `python3 -m unittest discover -s tests` (store races, guards, grants, categorizer) |
 
 ## Adding a host or verb
 
@@ -86,6 +94,9 @@ trusted. Enforcement lives elsewhere:
 | Checkmk notification rule | CT 115 | cloned from the ntfy rule, plugin `responder` |
 | OPNsense rule | Sentry, Tailscale interface | iPhone to `192.168.10.216:8787` TCP |
 | `rgate`, sudoers, `authorized_keys` | each target (CT 100 so far) | see "Adding a host" |
+| Sure categorizer config + key | CT 116 `/etc/responder/sure.env` | `root:responder 640`; key = Sure API key `responder-categorize`, read_write |
+| Pinned Caddy root CA | CT 116 `/etc/responder/caddy-root.crt` | from CT 103 `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt` (not the `/root/.local` one) |
+| Categorizer reports/transcripts | CT 116 `/var/lib/responder/categorize/` | financial data, 0700; never journaled; safe to lose |
 
 ## Known limits
 

@@ -74,10 +74,11 @@
 
 ## Remaining
 
-1. `sudo sentry-dns-guard init`
-2. `sudo systemctl enable --now sentry-dns-guard`
-3. Reboot; confirm `resolvectl dns`, `nft list table inet sentry_dns_lock`,
-   and `sentry-dns-guard status` are unchanged.
+Done. Baseline initialised 2026-09-26 11:34 CDT (`init` in the guard's event
+log) and the service has run since. Later changes:
+[2026-10-19 package-rewrite windows](2026-10-19-omarchy-dns-guard-package-rewrites.md),
+which also records the watchdog and lock-unit fixes made on the host after this
+writeup.
 
 ---
 

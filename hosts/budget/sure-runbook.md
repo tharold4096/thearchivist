@@ -11,6 +11,8 @@ and in the backup bundles under `/srv/sure-backups` (root 700).
 | Host | thearchivist, Proxmox, 192.168.10.202 | |
 | VM | **106** `budget`, Debian 13, 192.168.10.206/24 static on `ens18` | PASS |
 | VM flags | `onboot: 1`, `agent: enabled=1`; `qm agent 106 ping` OK | PASS (agent fixed today) |
+| VM CPU / RAM | **4 cores** (`cpu: host`, Xeon E5645), 4096 MB. Was 2 cores until 2026-11-02 | PASS (2026-11-02) |
+| Puma | `WEB_CONCURRENCY=2` (2 workers × 3 threads), set in `compose.override.yml` on `web` only | PASS (2026-11-02) |
 | Resolver | `/etc/resolv.conf` regular file → 192.168.10.1 | PASS |
 | Root disk | `scsi0` local-lvm 32G (single SSD, PERC RAID-0, **no redundancy**) | as designed |
 | Backup disk | `scsi1` `archive:106/vm-106-disk-0.qcow2` 20G (RAID-1 mirror) → `/srv/sure-backups` | PASS |
@@ -33,8 +35,8 @@ Power schedule: host cron `55 22 * * *` runs `/usr/local/sbin/nightly-poweroff.s
 
 ## 2. Rebuild from scratch
 
-1. **VM:** Debian 13, VMID 106, `scsi0` on local-lvm 32G, virtio-scsi-single, `net0` vmbr0.
-   `qm set 106 --onboot 1 --agent enabled=1`; in guest `apt install qemu-guest-agent docker.io docker-compose` (or Docker CE).
+1. **VM:** Debian 13, VMID 106, 4 cores, 4096 MB, `scsi0` on local-lvm 32G, virtio-scsi-single, `net0` vmbr0.
+   `qm set 106 --onboot 1 --agent enabled=1 --cores 4`; in guest `apt install qemu-guest-agent docker.io docker-compose` (or Docker CE).
    Static 192.168.10.206/24, gw/DNS 192.168.10.1. `tobias` in group `docker`.
 2. **Backup disk** (on the Proxmox host):
    `qm set 106 --scsi1 archive:20,format=qcow2,iothread=1,discard=on`
@@ -82,7 +84,9 @@ Power schedule: host cron `55 22 * * *` runs `/usr/local/sbin/nightly-poweroff.s
 - **Also covered by PBS:** the nightly 21:00 vzdump job (`all 1`) includes VM 106, both disks.
 - **Why the override exists:** `0.7.5-hotfix.3` ships only the old `bin/db-backup.sh`. The override mounts the
   standalone script where the `backup` service's entrypoint expects it. **On upgrade to an image that has
-  `bin/sure-backup`, delete `compose.override.yml` and `bin/`**, or the old script will keep hiding the new one.
+  `bin/sure-backup`, delete the `backup:` block of `compose.override.yml` and `bin/`**, or the old script will keep hiding the new one.
+  Keep the `web:` block (`WEB_CONCURRENCY`). `compose.yml` has no `env_file`, so a line in `.env` alone would never reach the container.
+- **After changing anything in compose files:** `docker compose up -d <service>` to recreate. A reboot only restarts the existing containers with their old config.
 - **Upgrade:** `docker compose run --rm backup create`, then set `SURE_IMAGE_TAG=<new>` in `.env`, then `docker compose pull web worker backup && docker compose up -d && docker compose --profile backup up -d backup`
 - **In-place rollback:** `docker compose stop web worker && docker compose run --rm backup restore <ver>/<name>`, set `SURE_IMAGE_TAG` back, then `docker compose up -d`.
 
@@ -160,11 +164,17 @@ Only then buy SimpleFIN ($15/yr).
 A daily 09:00 job on Responder categorizes new uncategorized transactions through the API: Claude proposes, code applies `category_id` only, at high or medium confidence.
 Setup, operation, undo and kill switch: [`categorize-setup.md`](categorize-setup.md). Code: `../responder/categorize.py`.
 Restore test rerun with real data on 2026-10-28: bundle `2026-10-28_190912-manual`, 369 transactions, range 2024-10-28..2026-10-27, amount checksum matched live.
+Since 2026-10-29 the same job can also rename raw bank text to clean names (`SURE_RENAME_MODE`, still dry-run; the original is kept in notes as `Bank text:`), and `sure-categorize --transfers` traces linked, unlinked and external transfers.
+**After renames are applied, don't re-import overlapping CSVs:** the import dedupes on date + amount + name. Sure's API can't clear a category, so undoing categorizations happens in the UI.
 
 ## 7. Open items
 
 - [ ] **Port 3000 exposure.** Restrict it in the `DOCKER-USER` chain: allow `192.168.10.201` → tcp/3000, drop everything else to 3000; persist it with a systemd unit.
       ufw is *not* a fix (Docker-published ports bypass it). The Proxmox VM firewall would need the datacenter firewall enabled. Binding to a single IP limits the interface, not the sources.
+- [x] Full Savings history imported 2026-10-29 (account opened 2026-05-01; 18 rows). Trace: 11 linked, 0 unlinked.
+- [x] Rename review done: `SURE_CATEGORIZE_MODE=apply` and `SURE_RENAME_MODE=apply`, timer enabled (checked 2026-11-02; last run 09:00 CST OK).
+- [x] Page speed: 4 cores + 2 Puma workers (2026-11-02, see `docs/writeups/2026-11-02-sure-page-speed.md`).
+- [ ] Optional: warm the app up after the 07:45 boot (API calls from Responder around 07:55) so the first page of the day doesn't take 3 s.
 - [ ] Off-site encrypted copy (section 6).
 - [ ] Phone trust for the Caddy internal CA: install the root from CT 103 `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`, which belongs to the caddy service user.
       A second CA also exists under `/root/.local/share/caddy/…`, likely from running `caddy` as root once; it is **not** the one serving. Compare `openssl x509 -noout -fingerprint -sha256` against what Omarchy trusts before installing.

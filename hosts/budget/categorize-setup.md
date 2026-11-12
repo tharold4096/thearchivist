@@ -68,13 +68,57 @@ systemctl enable --now sure-categorize.timer && systemctl list-timers sure-categ
 ```
 Expect `NEXT` to be the next 09:00.
 
+## 5b. Clean names and transfers (added 2026-10-29)
+
+The same daily run can now also replace raw bank text (`PURCHASE AUTHORIZED ON 10/23 SQ *PERC COFFEEHOU …`)
+with a clean name (`Perc Coffeehouse`). The original text is kept in the transaction's **notes**
+as `Bank text: …`. Transfers are named by code, not by Claude: `Transfer to Wells Fargo Savings`,
+`Transfer from account …NNNN` (someone else's account), `Transfer to other account` (WF left the number out).
+
+It's set up but **proposal-only** (`SURE_RENAME_MODE=dry-run`). The 2026-10-29 dry run proposed names for all 377 transactions.
+
+**Order matters.** Sure's CSV import detects duplicates by date + amount + **name**. If you import a CSV
+that overlaps renamed rows, those rows come in a second time. So:
+
+1. **Import any longer histories first.** Savings in Sure starts **2026-07-31**, so 5 checking→savings
+   transfers (May–July 2026) have no partner. Download a Savings CSV going back as far as checking does
+   (2025-10-01) and import it into *Wells Fargo Savings*. The rows that are already in Sure get matched, not duplicated.
+2. Wait for the sync, then trace transfers (as root inside CT 116):
+   ```
+   /usr/local/sbin/sure-categorize --transfers
+   ```
+   - **LINKED:** Sure has paired both sides. They count as transfers, not spending.
+   - **UNLINKED:** your own accounts but not paired. Each line says why: other side not imported yet,
+     or both sides present but the amount or date differs. For the second case, open the transaction in Sure → **Match transfer**.
+   - **EXTERNAL:** the other person's account (…NNNN), Zelle, "Money transfer". This is real money in or out.
+3. Review the proposed names:
+   ```
+   /usr/local/sbin/sure-categorize --dry-run
+   /usr/local/sbin/sure-categorize --report | less
+   ```
+   Each transaction has a second line, `name proposed: …`. Names stay consistent: a name that's
+   already in Sure is reused, and spellings that differ only in case or punctuation are merged.
+4. Turn it on:
+   ```
+   sed -i 's/^SURE_RENAME_MODE=.*/SURE_RENAME_MODE=apply/' /etc/responder/sure.env && systemctl start sure-categorize.service && journalctl -u sure-categorize -n 3 --no-pager
+   ```
+   Expect `…; renamed <N> of <M>`. After that, the 09:00 timer names new transactions every day.
+   **After this, don't re-import overlapping CSVs.** SimpleFIN takes over new transactions (renamed names are locked against provider syncs).
+
+The own-accounts map is `SURE_OWN_ACCOUNTS` in `/etc/responder/sure.env`. Format:
+`"Sure account name:last4,phrase in bank text;…"`. If you add another account of yours, add it there,
+or its transfers will show as EXTERNAL.
+
 ## 6. Day to day
 
 - Every morning: a low-priority ntfy with the counts. It's silent on days with nothing new.
 - Leftovers (`skipped`): categorize them in the Sure UI. Turning a repeat merchant into a rule stops it showing up again.
 - See what a run did: `/usr/local/sbin/sure-categorize --report` (latest), or `ls /var/lib/responder/categorize/`.
 - **Undo a run:** `/usr/local/sbin/sure-categorize --revert /var/lib/responder/categorize/report-YYYYMMDD-HHMMSS.json`
-  sets that run's categories back to none, except where you've changed them since.
+  restores that run's **names and notes** exactly, except where you've changed them since.
+  **Categories can't be cleared through Sure's API** (it ignores a null category). Revert tries each
+  one, checks, and prints how many are left. Clear those in the Sure UI (bulk-select → category).
+- Trace transfers any time: `/usr/local/sbin/sure-categorize --transfers` (read-only).
 - **Stop it:** `systemctl disable --now sure-categorize.timer`. **Kill switch:** revoke the `responder-categorize` key in Sure.
 - Logs: `journalctl -u sure-categorize`.
 
@@ -84,7 +128,9 @@ Expect `NEXT` to be the next 09:00.
 |---|---|
 | `/opt/responder/categorize.py`, `categorize.schema.json`, `categorize-prompt.md` | the job, Claude's output schema, Claude's instructions |
 | `/usr/local/lib/responder/run-claude-categorize` | fixed Claude call as `rclaude`, **no tools** |
-| `/usr/local/sbin/sure-categorize` | manual helper (above) |
+| `/usr/local/sbin/sure-categorize` | manual helper (above), including `--transfers` |
+| `/root/bak-20261029/` | the 2026-10-28 versions of the files above + `sure.env`, before the rename/transfer update |
+| `/root/bak-20261102/categorize.py` | the version before the SimpleFIN name fix (2026-11-02: strips SimpleFIN's `Payee - ` prefix before the raw-text and transfer checks) |
 | `/etc/responder/sure.env` (root:responder 640) | config + your key; `rclaude` can't read it (tested) |
 | `/etc/responder/caddy-root.crt` | Caddy root CA, pinned for this job only (SHA-256 `BF:E6:D2:69:…:AE:9F:BD`) |
 | `/etc/systemd/system/sure-categorize.{service,timer}` | oneshot + daily 09:00 timer |
