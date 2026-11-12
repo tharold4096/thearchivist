@@ -1,0 +1,15 @@
+---
+import Chevron from '../components/Chevron.astro';
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/paths';
+---
+<Base title="Page not found">
+  <header class="page-head">
+    <h1>Nothing at this address</h1>
+    <p class="lede">The page may have moved when the repo was reorganised. The map and the writeup list both link to everything that exists.</p>
+    <p style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">
+      <a class="button" href={url()}>Open the topology <Chevron /></a>
+      <a class="button is-plain" href={url('writeups')}>Browse writeups</a>
+    </p>
+  </header>
+</Base>

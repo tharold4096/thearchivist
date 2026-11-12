@@ -1,0 +1,18 @@
+---
+import { hostBySlug } from '../lib/inventory';
+import { url } from '../lib/paths';
+
+interface Props {
+  slug: string;
+}
+const h = hostBySlug.get(Astro.props.slug)!;
+---
+<a class="node" href={url(`hosts/${h.slug}`)} data-host={h.slug} data-status={h.status} data-status-host={h.slug}>
+  <span class="pip"></span>
+  <span class="node-name">{h.name}</span>
+  <span class="node-meta">
+    <span class="num">{h.primaryAddress}</span>
+    {h.vmid && <span class="id">{h.idLabel}</span>}
+  </span>
+  <span class="sr-only">, {h.status}</span>
+</a>

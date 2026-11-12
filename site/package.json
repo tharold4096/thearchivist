@@ -1,0 +1,25 @@
+{
+  "name": "thearchivist-site",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Static site for the homelab repo: topology, hosts, writeups. Built from git-tracked files only.",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "scripts": {
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 astro dev",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 astro build && node scripts/check-output.mjs",
+    "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview",
+    "check-output": "node scripts/check-output.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/league-spartan": "5.3.0",
+    "@fontsource-variable/red-hat-mono": "5.3.0",
+    "@fontsource-variable/red-hat-text": "5.3.0",
+    "astro": "7.4.4",
+    "markdown-it": "15.0.3",
+    "shiki": "4.5.0",
+    "yaml": "2.9.1"
+  }
+}

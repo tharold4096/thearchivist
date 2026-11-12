@@ -1,0 +1,84 @@
+---
+import HostChip from '../components/HostChip.astro';
+import Base from '../layouts/Base.astro';
+import { followUps, totalOpen } from '../lib/docs';
+import { plural, shortDate } from '../lib/format';
+import { hostBySlug } from '../lib/inventory';
+import { url } from '../lib/paths';
+
+const hostSlugs = [...new Set(followUps.flatMap((g) => g.hosts))].sort((a, b) => hostBySlug.get(a)!.name.localeCompare(hostBySlug.get(b)!.name));
+const fromWriteups = followUps.filter((g) => g.origin === 'writeup');
+const fromHosts = followUps.filter((g) => g.origin === 'host');
+const count = (gs: typeof followUps) => gs.reduce((n, g) => n + g.items.length, 0);
+const sections = [
+  { id: 'writeup', label: 'From writeups', note: 'Left open at the end of a build, change or incident.', groups: fromWriteups },
+  { id: 'host', label: 'Known issues on hosts', note: 'Found during the live check of each host.', groups: fromHosts },
+];
+---
+<Base title="Open follow-ups" section="follow-ups" description="Everything found and written down but not yet done.">
+  <header class="page-head">
+    <h1>Open follow-ups</h1>
+    <p class="lede">
+      {plural(totalOpen, 'item')} found and written down, not yet done. Each one links back to the document that raised it.
+    </p>
+    <div class="filter-bar">
+      <select class="field" aria-label="Host" data-fu-host>
+        <option value="">Any host</option>
+        {hostSlugs.map((s) => <option value={s}>{hostBySlug.get(s)!.name}</option>)}
+      </select>
+      <span class="filter-count" data-fu-count aria-live="polite"></span>
+    </div>
+  </header>
+
+  {sections.map((s) => (
+    <section class="host-group" data-fu-section>
+      <h2>{s.label} <span class="num muted" style="font-size:1rem;font-weight:500" data-fu-section-count>{count(s.groups)}</span></h2>
+      <p class="muted" style="margin-top:6px">{s.note}</p>
+      {s.groups.map((g) => (
+        <div class="fu-group" data-hosts={g.hosts.join(' ')} data-items={g.items.length}>
+          <div class="fu-source">
+            <a href={url(g.route) + (g.origin === 'writeup' ? '#follow-ups' : '#open')}>{g.title}</a>
+            <p class="sub">
+              {g.origin === 'writeup' ? <time class="num" datetime={g.date}>{shortDate(g.date)}</time> : 'Host page'}
+            </p>
+            {g.origin === 'writeup' && (
+              <ul class="chips">{g.hosts.map((h) => <li><HostChip slug={h} quiet /></li>)}</ul>
+            )}
+          </div>
+          <ul class="followup-list">{g.items.map((i) => <li set:html={i.html} />)}</ul>
+        </div>
+      ))}
+    </section>
+  ))}
+  <p class="empty" data-fu-empty hidden>Nothing open for that host.</p>
+
+  <script>
+    const select = document.querySelector<HTMLSelectElement>('[data-fu-host]')!;
+    const count = document.querySelector<HTMLElement>('[data-fu-count]')!;
+    const empty = document.querySelector<HTMLElement>('[data-fu-empty]')!;
+    const groups = [...document.querySelectorAll<HTMLElement>('.fu-group')];
+    const total = groups.reduce((n, g) => n + Number(g.dataset.items), 0);
+
+    function apply(updateUrl = true) {
+      const host = select.value;
+      let shown = 0;
+      for (const g of groups) {
+        const ok = !host || g.dataset.hosts!.split(' ').includes(host);
+        g.hidden = !ok;
+        if (ok) shown += Number(g.dataset.items);
+      }
+      document.querySelectorAll<HTMLElement>('[data-fu-section]').forEach((s) => {
+        const visible = [...s.querySelectorAll<HTMLElement>('.fu-group:not([hidden])')];
+        s.hidden = visible.length === 0;
+        s.querySelector('[data-fu-section-count]')!.textContent = String(visible.reduce((n, g) => n + Number(g.dataset.items), 0));
+      });
+      count.textContent = host ? `${shown} of ${total} items` : '';
+      empty.hidden = shown > 0;
+      if (updateUrl) history.replaceState(null, '', location.pathname + (host ? `?host=${host}` : ''));
+    }
+    const wanted = new URLSearchParams(location.search).get('host');
+    if (wanted && [...select.options].some((o) => o.value === wanted)) select.value = wanted;
+    select.addEventListener('change', () => apply());
+    apply(false);
+  </script>
+</Base>

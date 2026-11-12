@@ -1,0 +1,416 @@
+---
+import Chevron from '../components/Chevron.astro';
+import DocRow from '../components/DocRow.astro';
+import HostPanel from '../components/HostPanel.astro';
+import MapNode from '../components/MapNode.astro';
+import NetworkPanel from '../components/NetworkPanel.astro';
+import Base from '../layouts/Base.astro';
+import { followUps, journal, listedDocs, totalOpen } from '../lib/docs';
+import { plural, shortDate } from '../lib/format';
+import { edges, hostBySlug, hosts, networkById, networks, statusSnapshot } from '../lib/inventory';
+import { url } from '../lib/paths';
+
+const gate = hostBySlug.get('sentrygate')!;
+const keep = hostBySlug.get('thearchivist')!;
+const iface = (role: string) => gate.interfaces.find((i) => i.role === role);
+const wan = iface('WAN');
+const lan = iface('LAN');
+const vpn = iface('VPN');
+
+const guests = keep.guests.map((s) => hostBySlug.get(s)!).sort((a, b) => (a.vmid ?? 0) - (b.vmid ?? 0));
+const inRange = (s: string) => hostBySlug.get(s)!.networks.includes('range');
+const containers = guests.filter((g) => g.kind === 'lxc' && !inRange(g.slug));
+const vms = guests.filter((g) => g.kind === 'vm' && !inRange(g.slug));
+const rangeGuests = guests.filter((g) => inRange(g.slug));
+const clients = hosts.filter((h) => h.kind === 'client');
+
+const family = networkById.get('family-lan')!;
+const tailnet = networkById.get('tailnet')!;
+const lab = networkById.get('lab-lan')!;
+const range = networkById.get('range')!;
+
+const running = hosts.filter((h) => h.status === 'running').length;
+const latest = listedDocs.filter((d) => d.type !== 'responder').slice(0, 5);
+const lastJournal = [...journal].sort((a, b) => b.date.localeCompare(a.date))[0];
+
+const topology = {
+  edges,
+  networks: Object.fromEntries(networks.map((n) => [n.id, n.members])),
+};
+---
+<Base section="map">
+  <div class="map-head">
+    <div>
+      <h1>Lab topology</h1>
+      <p>
+        Sentry Gate stands between the family network and the lab. Behind it, one R710 runs every service.
+        Tap a host for its addresses and ports.
+      </p>
+    </div>
+    <div>
+      <div class="overlay-toggle" role="group" aria-label="Lines drawn on the map">
+        <button type="button" data-overlay="none" aria-pressed="true">Layout only</button>
+        <button type="button" data-overlay="proxy" aria-pressed="false">Proxy routes</button>
+        <button type="button" data-overlay="depends" aria-pressed="false">Dependencies</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="map-layout">
+    <div class="plan" data-plan>
+      <svg class="plan-edges" aria-hidden="true">
+        <defs>
+          {['needs', 'needed', 'proxy'].map((k) => (
+            <marker id={`arrow-${k}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+              <path class={`arrow arrow-${k}`} d="M2 1.5 8 5 2 8.5" />
+            </marker>
+          ))}
+        </defs>
+        <g data-edges></g>
+      </svg>
+
+      <section class="zone zone-family" aria-label={family.name}>
+        <a class="zone-label" href="#net-family-lan" data-net="family-lan">Family LAN <span class="num">{family.cidr}</span></a>
+        <div class="outside-node">
+          <strong>Home router</strong>
+          <span class="num">{family.gateway}</span>, the way out to the internet
+        </div>
+      </section>
+
+      <section class="zone zone-tailnet" aria-label={tailnet.name}>
+        <a class="zone-label" href="#net-tailnet" data-net="tailnet">Tailnet <span class="num">{tailnet.cidr}</span></a>
+        <div class="zone-nodes">
+          {clients.map((c) => <MapNode slug={c.slug} />)}
+        </div>
+      </section>
+
+      <div class="link-stub">
+        <span><b>{wan?.name}</b> WAN<br /><span class="num">{wan?.ip?.replace(/\/\d+$/, '')}</span></span>
+      </div>
+      <div class="link-stub is-virtual">
+        <span><b>{vpn?.name}</b> subnet router and exit node<br /><span class="num">{vpn?.ip}</span></span>
+      </div>
+
+      <a class="node gate" href={url('hosts/sentrygate')} data-host="sentrygate" data-wide data-status={gate.status} data-status-host="sentrygate">
+        <span class="gate-title"><span class="pip"></span><span class="node-name">{gate.name}</span></span>
+        <span class="gate-role">Firewall, router, DNS filter</span>
+        <span class="gate-addr num">{gate.primaryAddress}</span>
+        <span class="sr-only">, {gate.status}</span>
+      </a>
+
+      <div class="link-stub is-lan">
+        <span><b>{lan?.name}</b> LAN, {lan?.speed === '100baseTX' ? '100 Mbit' : lan?.speed}<br /><span class="num">{lan?.ip?.replace(/\/\d+$/, '')}</span></span>
+      </div>
+
+      <section class="zone zone-lab" aria-label={lab.name}>
+        <a class="zone-label" href="#net-lab-lan" data-net="lab-lan">Lab LAN <span class="num">{lab.cidr}</span></a>
+        <div class="keep">
+          <a class="node keep-head" href={url('hosts/thearchivist')} data-host="thearchivist" data-wide data-status={keep.status} data-status-host="thearchivist">
+            <span class="pip"></span>
+            <span class="node-name">{keep.name}</span>
+            <span class="node-meta"><span class="num">{keep.primaryAddress}</span><span class="id">Proxmox VE on a Dell R710</span></span>
+            <span class="keep-count">{guests.length} guests<br />{guests.filter((g) => g.status === 'running').length} running</span>
+            <span class="sr-only">, {keep.status}</span>
+          </a>
+
+          <h2 class="rank-label">Containers</h2>
+          <div class="zone-nodes">{containers.map((g) => <MapNode slug={g.slug} />)}</div>
+
+          <h2 class="rank-label">Virtual machines</h2>
+          <div class="zone-nodes">{vms.map((g) => <MapNode slug={g.slug} />)}</div>
+
+          <section class="zone zone-range" aria-label={range.name}>
+            <a class="zone-label" href="#net-range" data-net="range">Isolated range <span class="num">vmbr1, no uplink</span></a>
+            <div class="zone-nodes">{rangeGuests.map((g) => <MapNode slug={g.slug} />)}</div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <aside class="inspector" data-inspector aria-live="polite">
+      <div class="panel" data-panel="overview">
+        <header class="panel-head">
+          <h2>Whole lab</h2>
+        </header>
+        <p class="panel-role">
+          Status as observed {shortDate(statusSnapshot.asOf)}.{statusSnapshot.live ? '' : ' A dated snapshot, not a live feed.'}
+        </p>
+        <dl class="tally">
+          <div><dt>Hosts</dt><dd>{hosts.length}</dd></div>
+          <div><dt>Running</dt><dd>{running}</dd></div>
+          <div><dt>Not running</dt><dd>{hosts.length - running}</dd></div>
+        </dl>
+
+        <h3>Hosts</h3>
+        <ul class="legend">
+          <li><span class="pip" data-status="running"></span>Running</li>
+          <li><span class="pip" data-status="stopped"></span>Stopped (started on demand)</li>
+          <li><span class="pip" data-status="offline"></span>Offline when last checked</li>
+        </ul>
+
+        <h3>Networks</h3>
+        <ul class="legend">
+          <li><span class="swatch"></span>Wired network</li>
+          <li><span class="swatch is-dashed-orange"></span>Tailscale overlay</li>
+          <li><span class="swatch is-dashed-red"></span>Isolated, no route out</li>
+        </ul>
+
+        <h3>Lines, drawn when you pick a host</h3>
+        <ul class="legend">
+          <li><svg viewBox="0 0 34 10"><path class="edge is-needs" d="M1 5h32" /></svg>Needs</li>
+          <li><svg viewBox="0 0 34 10"><path class="edge is-needed" d="M1 5h32" /></svg>Needed by</li>
+          <li><svg viewBox="0 0 34 10"><path class="edge is-proxy" d="M2 5h31" /></svg>Proxied by Caddy</li>
+        </ul>
+        <p class="panel-role" data-overlay-note hidden>
+          Every host on the lab LAN also needs Sentry Gate. Those lines are left out of this view; pick a host to see them.
+        </p>
+      </div>
+
+      {hosts.map((h) => <HostPanel host={h} />)}
+      {networks.map((n) => <NetworkPanel network={n} />)}
+    </aside>
+  </div>
+
+  <div class="below-map">
+    <section>
+      <h2>Latest writeups</h2>
+      <ul class="doc-rows">{latest.map((d) => <DocRow doc={d} />)}</ul>
+      <p style="margin-top:18px"><a class="button is-plain" href={url('writeups')}>All {listedDocs.length} writeups and records <Chevron /></a></p>
+    </section>
+    <section>
+      <h2>Still open</h2>
+      <p class="muted">
+        {plural(totalOpen, 'follow-up')} across {plural(followUps.length, 'document')} and host pages:
+        things found and written down, not yet done.
+      </p>
+      <p style="margin-top:14px"><a class="button is-plain" href={url('follow-ups')}>Open follow-ups <Chevron /></a></p>
+      {lastJournal && (
+        <>
+          <h2 style="margin-top:36px">Responder journal</h2>
+          <p class="muted">
+            {plural(journal.length, 'incident record')} written by the alert responder on CT 116.
+            Latest {shortDate(lastJournal.date)}.
+          </p>
+          <p style="margin-top:14px"><a class="button is-plain" href={url('writeups/?type=responder')}>Read the journal <Chevron /></a></p>
+        </>
+      )}
+    </section>
+  </div>
+
+  <script type="application/json" id="topology-data" set:html={JSON.stringify(topology)} />
+  <script>
+    type Edge = { kind: 'depends' | 'proxy'; from: string; to: string };
+    type Selection = { type: 'host' | 'net'; id: string } | null;
+    type Box = { x: number; y: number; w: number; h: number; wide: boolean; grid: boolean; gap: number };
+
+    const plan = document.querySelector<HTMLElement>('[data-plan]')!;
+    const layer = plan.querySelector<SVGGElement>('[data-edges]')!;
+    const inspector = document.querySelector<HTMLElement>('[data-inspector]')!;
+    const note = inspector.querySelector<HTMLElement>('[data-overlay-note]')!;
+    const data = JSON.parse(document.getElementById('topology-data')!.textContent!) as {
+      edges: Edge[];
+      networks: Record<string, string[]>;
+    };
+
+    let selection: Selection = null;
+    let overlay: 'none' | 'proxy' | 'depends' = 'none';
+
+    const node = (slug: string) => plan.querySelector<HTMLElement>(`[data-host="${CSS.escape(slug)}"]`);
+
+    function box(el: HTMLElement): Box {
+      const p = plan.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      const grid = Boolean(el.parentElement?.classList.contains('zone-nodes') && el.closest('.keep'));
+      const gap = grid ? parseFloat(getComputedStyle(el.parentElement!).columnGap) || 10 : 10;
+      return { x: r.left - p.left, y: r.top - p.top, w: r.width, h: r.height, wide: el.hasAttribute('data-wide'), grid, gap };
+    }
+
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    type Pt = [number, number];
+
+    /** Right-angled path through the points, with the corners eased. */
+    function trace(points: Pt[], radius = 5) {
+      const pts = points.filter((p, i) => i === 0 || Math.abs(p[0] - points[i - 1][0]) + Math.abs(p[1] - points[i - 1][1]) > 0.5);
+      let d = `M${pts[0][0]},${pts[0][1]}`;
+      for (let i = 1; i < pts.length - 1; i++) {
+        const [px, py] = pts[i - 1];
+        const [cx, cy] = pts[i];
+        const [nx, ny] = pts[i + 1];
+        const inLen = Math.hypot(cx - px, cy - py);
+        const outLen = Math.hypot(nx - cx, ny - cy);
+        const r = Math.min(radius, inLen / 2, outLen / 2);
+        d += ` L${cx - ((cx - px) / inLen) * r},${cy - ((cy - py) / inLen) * r} Q${cx},${cy} ${cx + ((nx - cx) / outLen) * r},${cy + ((ny - cy) / outLen) * r}`;
+      }
+      const last = pts[pts.length - 1];
+      return `${d} L${last[0]},${last[1]}`;
+    }
+
+    /**
+     * Lines run in the gutters between hosts, like traces on a board, so they
+     * never cross a host they do not belong to. `lane` (-1, 0, 1) nudges each
+     * kind of line sideways so two kinds between the same pair stay apart.
+     */
+    function route(a: Box, b: Box, lane: number) {
+      const off = lane * 6;
+      const nudge = lane * 2;
+      const ac = a.x + a.w / 2 + off;
+      const bc = b.x + b.w / 2 + off;
+      const tip = 3; // leave room for the arrowhead
+      const below = b.y >= a.y + a.h - 1;
+      const above = b.y + b.h <= a.y + 1;
+
+      if (a.wide || b.wide) {
+        const bar = a.wide ? a : b;
+        const small = a.wide ? b : a;
+        const through = a.wide && b.wide ? bar.x + bar.w / 2 : small.grid ? small.x - small.gap / 2 + nudge : small.x + small.w / 2 + off;
+        const x = clamp(through, bar.x + 12, bar.x + bar.w - 12);
+        const y1 = below ? a.y + a.h : a.y;
+        const y2 = below ? b.y - tip : b.y + b.h + tip;
+        if (!small.grid || (a.wide && b.wide)) return trace([[x, y1], [x, y2]]);
+        if (!a.wide) {
+          const gutter = below ? a.y + a.h + a.gap / 2 + nudge : a.y - a.gap / 2 + nudge;
+          return trace([[ac, y1], [ac, gutter], [x, gutter], [x, y2]]);
+        }
+        const gutter = below ? b.y - b.gap / 2 + nudge : b.y + b.h + b.gap / 2 + nudge;
+        return trace([[x, y1], [x, gutter], [bc, gutter], [bc, y2]]);
+      }
+
+      if (!below && !above) {
+        const y = a.y - a.gap / 2 + nudge;
+        return trace([[ac, a.y], [ac, y], [bc, y], [bc, b.y - tip]]);
+      }
+      const y1 = below ? a.y + a.h + a.gap / 2 + nudge : a.y - a.gap / 2 + nudge;
+      const y2 = below ? b.y - b.gap / 2 + nudge : b.y + b.h + b.gap / 2 + nudge;
+      const start: Pt = [ac, below ? a.y + a.h : a.y];
+      const end: Pt = [bc, below ? b.y - tip : b.y + b.h + tip];
+      if (Math.abs(y2 - y1) < 4) return trace([start, [ac, y1], [bc, y1], end]);
+      const gx = b.x - b.gap / 2 + nudge;
+      return trace([start, [ac, y1], [gx, y1], [gx, y2], [bc, y2], end]);
+    }
+
+    function draw() {
+      layer.replaceChildren();
+      const lines: { e: Edge; cls: string; marker: string; lane: number }[] = [];
+      if (selection?.type === 'host') {
+        for (const e of data.edges) {
+          if (e.from !== selection.id && e.to !== selection.id) continue;
+          // A proxied host needs its proxy by definition: draw that pair once, as the proxy line.
+          if (e.kind === 'depends' && data.edges.some((p) => p.kind === 'proxy' && p.from === e.to && p.to === e.from)) continue;
+          if (e.kind === 'proxy') lines.push({ e, cls: 'is-proxy', marker: 'proxy', lane: 1 });
+          else if (e.from === selection.id) lines.push({ e, cls: 'is-needs', marker: 'needs', lane: -1 });
+          else lines.push({ e, cls: 'is-needed', marker: 'needed', lane: 0 });
+        }
+      } else if (!selection && overlay !== 'none') {
+        for (const e of data.edges) {
+          if (e.kind !== overlay) continue;
+          if (overlay === 'depends' && e.to === 'sentrygate') continue;
+          lines.push(e.kind === 'proxy' ? { e, cls: 'is-proxy', marker: 'proxy', lane: 0 } : { e, cls: 'is-needs is-faint', marker: 'needs', lane: 0 });
+        }
+      }
+      for (const { e, cls, marker, lane } of lines) {
+        const from = node(e.from);
+        const to = node(e.to);
+        if (!from || !to) continue;
+        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttribute('class', `edge ${cls}`);
+        p.setAttribute('d', route(box(from), box(to), lane));
+        p.setAttribute('marker-end', `url(#arrow-${marker})`);
+        layer.append(p);
+      }
+    }
+
+    function render() {
+      plan.querySelectorAll('.is-selected, .is-related').forEach((el) => el.classList.remove('is-selected', 'is-related'));
+      const key = selection ? `${selection.type}:${selection.id}` : 'overview';
+      inspector.querySelectorAll<HTMLElement>('[data-panel]').forEach((p) => (p.hidden = p.dataset.panel !== key));
+      inspector.toggleAttribute('data-open', Boolean(selection));
+      plan.toggleAttribute('data-active', Boolean(selection));
+      inspector.scrollTop = 0;
+
+      if (selection?.type === 'host') {
+        node(selection.id)?.classList.add('is-selected');
+        for (const e of data.edges) {
+          if (e.from === selection.id) node(e.to)?.classList.add('is-related');
+          if (e.to === selection.id) node(e.from)?.classList.add('is-related');
+        }
+      } else if (selection?.type === 'net') {
+        plan.querySelector(`[data-net="${CSS.escape(selection.id)}"]`)?.classList.add('is-selected');
+        for (const slug of data.networks[selection.id] ?? []) node(slug)?.classList.add('is-related');
+      }
+      note.hidden = !(overlay === 'depends' && !selection);
+      draw();
+    }
+
+    function select(next: Selection, opts: { scroll?: boolean } = {}) {
+      selection = next;
+      const hash = next ? (next.type === 'host' ? `#${next.id}` : `#net-${next.id}`) : ' ';
+      history.replaceState(null, '', next ? hash : location.pathname + location.search);
+      render();
+      if (next?.type === 'host' && opts.scroll && matchMedia('(max-width: 1040px)').matches) {
+        const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        node(next.id)?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+      }
+    }
+
+    function fromHash(): Selection {
+      const h = decodeURIComponent(location.hash.slice(1));
+      if (!h) return null;
+      if (h.startsWith('net-') && data.networks[h.slice(4)]) return { type: 'net', id: h.slice(4) };
+      return node(h) ? { type: 'host', id: h } : null;
+    }
+
+    plan.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const hostEl = target.closest<HTMLElement>('[data-host]');
+      const netEl = target.closest<HTMLElement>('[data-net]');
+      if (hostEl) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+        // A second tap on the selected host opens its page.
+        if (selection?.type === 'host' && selection.id === hostEl.dataset.host) return;
+        e.preventDefault();
+        select({ type: 'host', id: hostEl.dataset.host! }, { scroll: true });
+      } else if (netEl) {
+        e.preventDefault();
+        const same = selection?.type === 'net' && selection.id === netEl.dataset.net;
+        select(same ? null : { type: 'net', id: netEl.dataset.net! });
+      } else if (selection) {
+        select(null);
+      }
+    });
+
+    inspector.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const chip = target.closest<HTMLElement>('[data-select-host]');
+      if (chip && !(e.metaKey || e.ctrlKey || e.shiftKey)) {
+        e.preventDefault();
+        select({ type: 'host', id: chip.dataset.selectHost! }, { scroll: true });
+      } else if (target.closest('[data-clear]')) {
+        const was = selection;
+        select(null);
+        if (was?.type === 'host') node(was.id)?.focus();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && selection && !document.querySelector('dialog[open]')) select(null);
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('[data-overlay]').forEach((b) =>
+      b.addEventListener('click', () => {
+        overlay = b.dataset.overlay as typeof overlay;
+        document.querySelectorAll('[data-overlay]').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+        if (selection) select(null);
+        else render();
+      }),
+    );
+
+    new ResizeObserver(draw).observe(plan);
+    document.fonts?.ready.then(draw);
+    addEventListener('hashchange', () => {
+      selection = fromHash();
+      render();
+    });
+    selection = fromHash();
+    render();
+  </script>
+</Base>

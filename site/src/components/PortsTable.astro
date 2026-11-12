@@ -1,0 +1,40 @@
+---
+import type { Port } from '../lib/inventory';
+
+interface Props {
+  ports: Port[];
+  compact?: boolean;
+}
+const { ports, compact = false } = Astro.props;
+const VIA: Record<string, string> = { direct: 'Direct', caddy: 'Caddy', tailscale: 'Tailscale' };
+---
+{ports.length === 0 ? (
+  <p class="muted">No ports listening off-box.</p>
+) : (
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Port</th>
+          <th scope="col">Service</th>
+          {!compact && <th scope="col">Bound to</th>}
+          <th scope="col">Reached via</th>
+        </tr>
+      </thead>
+      <tbody>
+        {ports.map((p) => (
+          <tr>
+            <td class="port num">{p.port}<span class="proto">/{p.proto}</span></td>
+            <td>
+              {p.service}
+              {p.notes && <span class="cell-note">{p.notes}</span>}
+              {compact && p.bind !== 'all' && <span class="cell-note">Bound to <span class="num">{p.bind}</span></span>}
+            </td>
+            {!compact && <td class={p.bind === 'all' ? 'muted' : 'num'}>{p.bind === 'all' ? 'All addresses' : p.bind}</td>}
+            <td class="via" data-via={p.via}>{VIA[p.via] ?? p.via}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}

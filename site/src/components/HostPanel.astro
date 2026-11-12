@@ -1,0 +1,86 @@
+---
+// The inspector's view of one host: addresses and ports first.
+import { docsForHost, openCountForHost } from '../lib/docs';
+import { plural } from '../lib/format';
+import { hostBySlug, type Host } from '../lib/inventory';
+import { url } from '../lib/paths';
+import Chevron from './Chevron.astro';
+import HostChip from './HostChip.astro';
+import PortsTable from './PortsTable.astro';
+import StatusBadge from './StatusBadge.astro';
+
+interface Props {
+  host: Host;
+}
+const { host: h } = Astro.props;
+const parent = h.runs_on ? hostBySlug.get(h.runs_on) : undefined;
+const open = openCountForHost(h.slug);
+const docs = docsForHost(h.slug).length;
+---
+<article class="panel" data-panel={`host:${h.slug}`} hidden>
+  <header class="panel-head">
+    <h2 tabindex="-1">{h.name}</h2>
+    <button class="panel-close" type="button" data-clear aria-label="Close and show the whole topology">
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m3 3 12 12M15 3 3 15" /></svg>
+    </button>
+    <p class="panel-sub">
+      <StatusBadge status={h.status} host={h.slug} />
+      <span>{h.kind === 'lxc' || h.kind === 'vm' ? `${h.idLabel} on ${parent?.name}` : h.kindLabel}</span>
+    </p>
+  </header>
+  <p class="panel-role">{h.role}</p>
+
+  {h.addresses.length > 0 ? (
+    <ul class="addresses">
+      {h.addresses.map((a) => (
+        <li>
+          <span class="num">{a.ip}</span>
+          <span class="addr-label">{a.role ? `${a.label}, ${a.role}` : a.label}</span>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p class="panel-role">{h.dhcp ? 'Takes a DHCP lease on the lab LAN; no fixed address.' : 'No address on the lab LAN.'}</p>
+  )}
+  {h.web && <p class="panel-links"><a class="num" href={h.web} rel="noopener">{h.web.replace(/^https?:\/\//, '')}</a></p>}
+
+  <h3>Ports</h3>
+  <PortsTable ports={h.ports} compact />
+
+  {h.routes.length > 0 && (
+    <>
+      <h3>Names it serves</h3>
+      <div class="table-scroll">
+        <table class="is-tight">
+          <tbody>
+            {h.routes.map((r) => (
+              <tr>
+                <td class="num">{r.name}{r.notes && <span class="cell-note">{r.notes}</span>}</td>
+                <td class="num">{r.upstream}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )}
+
+  {h.depends_on.length > 0 && (
+    <>
+      <h3>Needs</h3>
+      <ul class="chips">{h.depends_on.map((s) => <li><HostChip slug={s} select /></li>)}</ul>
+    </>
+  )}
+  {h.needed_by.length > 0 && (
+    <>
+      <h3>Needed by</h3>
+      <ul class="chips">{h.needed_by.map((s) => <li><HostChip slug={s} select /></li>)}</ul>
+    </>
+  )}
+
+  <a class="button" href={url(`hosts/${h.slug}`)}>Open {h.name} <Chevron /></a>
+  <p class="panel-links muted">
+    <span>{plural(docs, 'writeup')}</span>
+    <span>{open ? plural(open, 'known issue') : 'No known issues'}</span>
+  </p>
+</article>
