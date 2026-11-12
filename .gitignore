@@ -82,3 +82,6 @@ arr-stack/
 *seerr*
 *qbittorrent*
 *flaresolverr*
+
+# --- Claude Code local session files (briefs, settings) ---
+.claude/
