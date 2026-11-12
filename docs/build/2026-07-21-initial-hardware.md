@@ -1,3 +1,14 @@
+---
+title: "Initial hardware installation (Arch / Sentry Gate)"
+date: 2026-07-21
+type: build
+status: complete
+hosts: [sentrygate]
+tags: [hardware, drives]
+summary: "First hardware pass on the Inspiron 530 that became Sentry Gate."
+verified: 2026-07-21
+open: 0
+---
 # \[Initial Hardware Installation]
 
 **Date:** 2026-07-21
@@ -6,7 +17,7 @@
 **Status:** In Progress
 **Tags:** Hardware, Drives, OS
 
-\---
+---
 
 ## Why I built this
 
@@ -43,7 +54,7 @@
 
 * Resolve hard drive issues early. Initial install of Ubuntu server was hanging as well the initial attempt, which should have flagged the drive (est. 18y life, with repeated spin ups and downs). The best way to circumvent these issues later down the line are to very the stability with the Tower before install on the Arch. Consider using tools such as Crystal or the native SMART support to check beforehand. Will be performing this verification when new storage parts arrive.
 
-\---
+---
 
 ## Resume-ready summary
 

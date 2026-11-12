@@ -1,3 +1,14 @@
+---
+title: "Remote access: Tailscale to an OPNsense firewall"
+date: 2026-07-29
+type: build
+status: complete
+hosts: [sentrygate]
+tags: [tailscale, vpn, firewall, opnsense]
+summary: "Mesh-VPN admin access with no inbound ports, including debugging a correct-looking rule that silently dropped traffic."
+verified: 2026-07-29
+open: 0
+---
 # Remote Access: Mesh VPN to an OPNsense Firewall
 
 Goal: administer the firewall — and eventually the server behind it — from anywhere, without opening a single inbound port on the home router.
@@ -6,7 +17,7 @@ Getting there required working around two behaviours that aren't obvious from th
 
 > \\\\\\\\\\\\\\\*\\\\\\\\\\\\\\\*Note on addresses.\\\\\\\\\\\\\\\*\\\\\\\\\\\\\\\* Tailnet addresses in this document are redacted. They aren't internet-routable, but publishing a live map of which address belongs to which device is unnecessary detail for a public repo.
 
-\---
+---
 
 ## Why a mesh VPN rather than port forwarding
 
@@ -14,7 +25,7 @@ The constraint that shaped this was a university housing policy prohibiting pers
 
 A mesh VPN sidesteps this entirely. Connections are **outbound-only** from every node, so nothing needs forwarding at either NAT layer. The same property that satisfies the housing policy also makes double NAT a non-issue at the home end — which is why the family router keeps its normal configuration instead of being bridged.
 
-\---
+---
 
 ## Sequencing: prove the way back in before closing the door
 
@@ -32,7 +43,7 @@ Doing this in the opposite order — splitting first, arranging remote access af
 
 **Fallbacks, in order:** a laptop plugged directly into the firewall's LAN port sits on the same subnet as the server and works whenever the VPN itself is the broken thing. Below that, VGA console and keyboard, which depend on no networking at all.
 
-\---
+---
 
 ## Obstacle 1: the interface isn't assigned
 
@@ -48,7 +59,7 @@ This has been raised more than once as a bug against the plugin. The fix:
 
 A second, separate gate exists beyond the firewall: the administrative service's own listen interfaces. If bound to specific interfaces rather than all, the tunnel interface must be included or the service won't answer even with the firewall fully open.
 
-\---
+---
 
 ## Obstacle 2: absence of a block is not permission
 
@@ -56,7 +67,7 @@ The next failure was more instructive. With the interface assigned and a pass ru
 
 The reasoning that delayed the fix was: *there are no rules blocking this, so it should pass.* That's backwards for a default-deny firewall. An interface with no matching rule blocks everything. The only reason the LAN interface behaves permissively is a built-in anti-lockout rule, which exists on LAN and nowhere else.
 
-\---
+---
 
 ## Debugging a rule that looks correct
 
@@ -82,7 +93,7 @@ Rule      : Default deny / state violation rule
 
 **One observation that looked like a symptom but wasn't:** two simultaneous outbound source ports from each client. That's ordinary browser behaviour — parallel TCP connections to the same host — and had nothing to do with the failure.
 
-\---
+---
 
 ## Hardening: from blanket allow to explicit allowlist
 
@@ -99,7 +110,7 @@ Two things learned building it:
 
 **Next layer, not yet implemented:** the mesh provider's own ACLs can enforce the same restriction before traffic ever reaches the firewall. Defence in depth rather than a replacement.
 
-\---
+---
 
 ## Verification
 
@@ -109,7 +120,7 @@ Two things learned building it:
 
 That last step was deliberate. The session had changed interface assignment, firewall rules, and plugin authentication. Discovering an auto-start failure remotely, with no console, would have been considerably worse than five minutes of local verification.
 
-\---
+---
 
 ## Planned: subnet routing
 

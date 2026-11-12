@@ -60,8 +60,8 @@ logs/
 # Each exception is listed individually and ON PURPOSE. Do not broaden this
 # to `!hosts/**/*.xml`: that would let a future config export slip through
 # just by being dropped in the right directory.
-!hosts/wazuh/local_rules.xml
-!hosts/thearchivist/ossec-additions.xml
+!hosts/lxc/ct104-wazuh/local_rules.xml
+!hosts/physical/thearchivist/ossec-additions.xml
 
 # --- Python bytecode ---
 __pycache__/

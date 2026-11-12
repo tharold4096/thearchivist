@@ -1,3 +1,14 @@
+---
+title: "Memory population and power tuning"
+date: 2026-07-29
+type: build
+status: in-progress
+hosts: [thearchivist]
+tags: [ram, power, build-series]
+summary: "Fill-from-memory retrieval write-up, part 04 of the July build series. Italic prompts are deliberately left for the author."
+verified: 2026-07-29
+open: 0
+---
 # Memory Population and Power Configuration
 
 ## Overview

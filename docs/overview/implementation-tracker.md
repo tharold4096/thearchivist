@@ -1,10 +1,21 @@
+---
+title: "Implementation tracker (July 2026 plan)"
+date: 2026-07-21
+type: reference
+status: superseded
+hosts: []
+tags: [planning]
+summary: "Pre-server service plan for Arch (now Sentry Gate) and Tower; superseded by hosts/README.md, which reflects what was actually deployed."
+verified: 2026-07-21
+open: 0
+---
 # Homelab Implementation Tracker
 
 A running list of everything planned, in progress, or deployed across the lab. Each machine gets its own table using the same columns, so a new item just means a new row — no reformatting needed as the project grows. A blank copy-paste template is at the bottom for anything that needs more room than a row (longer notes, multi-step config, etc.).
 
 **Status legend:** Planned · In Progress · Deployed · Deprecated
 
-\---
+---
 
 ## Arch (Dell Inspiron 530 — home)
 
@@ -22,7 +33,7 @@ A running list of everything planned, in progress, or deployed across the lab. E
 |Swapfile (2–4GB)|Planned|SSD|N/A (safety net, not a service)|Prevents OOM kills under load|
 |*(new item)*|||||
 
-\---
+---
 
 ## Tower (Gaming PC — dorm)
 
@@ -35,7 +46,7 @@ A running list of everything planned, in progress, or deployed across the lab. E
 |Sysmon + Windows Event Forwarding|Planned|Host/VM|—|Host-level logging|
 |*(new item)*|||||
 
-\---
+---
 
 ## Oracle Cloud VM (honeypot)
 
@@ -44,7 +55,7 @@ A running list of everything planned, in progress, or deployed across the lab. E
 |Cowrie or T-Pot|Not started|Oracle Always Free tier|Per free-tier instance limits|Public honeypot, attacker IP/technique analysis|
 |*(new item)*|||||
 
-\---
+---
 
 ## Blank entry template
 

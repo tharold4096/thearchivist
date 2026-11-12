@@ -1,3 +1,14 @@
+---
+title: "Two-site homelab project plan"
+date: 2026-07-29
+type: reference
+status: superseded
+hosts: []
+tags: [planning, architecture]
+summary: "The original July 2026 plan and key learnings; superseded in detail by the host inventory, kept for its reasoning."
+verified: 2026-07-29
+open: 0
+---
 - MoCA — only revisit if powerline underperforms in practice
 ---
  

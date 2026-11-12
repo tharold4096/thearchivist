@@ -1,0 +1,441 @@
+# Homelab inventory: the single machine-readable source of truth.
+#
+# Read by the website (host pages, topology, port tables) and by humans.
+# Every value was read live on the date in `verified`; update that date only
+# when you re-check the live system, not when you edit this file.
+#
+# Arr-stack containers (CT 109-114) are NOT listed here. They live in
+# inventory.arr-stack.yml, which .gitignore keeps local.
+#
+# Field guide
+#   slug        folder name under hosts/<group>/ and the id used in writeup front matter
+#   kind        physical | lxc | vm | client
+#   runs_on     slug of the parent machine (omit for physical/client)
+#   status      running | stopped | planned | retired (as observed on `verified`)
+#   ports       listening sockets reachable off-box (loopback-only omitted)
+#               via: how a person normally reaches it (direct | caddy | tailscale)
+#   depends_on  what must be up for this host to do its job
+#   web         the URL a person actually opens
+
+verified: 2026-11-12
+
+networks:
+  - id: lab-lan
+    name: Lab LAN (Sentry Gate LAN)
+    cidr: 192.168.10.0/24
+    gateway: 192.168.10.1
+    dhcp_pool: 192.168.10.100-192.168.10.200
+    dns: 192.168.10.1 (Unbound + DNSBL on Sentry)
+    domain: home.arpa
+    notes: Static guests sit outside the DHCP pool. Proxmox bridge vmbr0.
+  - id: family-lan
+    name: Family LAN (home router)
+    cidr: 192.168.1.0/24
+    gateway: 192.168.1.1
+    notes: Untouched by the lab. Sentry's WAN (bge0) is 192.168.1.223 on it; family devices never route through Sentry.
+  - id: range
+    name: Isolated range (vmbr1)
+    cidr: null
+    notes: Proxmox bridge with no physical port. Only range-gw and target-juice attach to it.
+  - id: tailnet
+    name: Tailscale tailnet
+    cidr: 100.64.0.0/10
+    notes: Remote admin path. Sentry advertises the lab LAN as a subnet route and offers an exit node.
+
+hosts:
+  # ---------------------------------------------------------------- physical
+  - slug: sentrygate
+    name: Sentry Gate
+    kind: physical
+    group: physical
+    role: Inline firewall, router, DNS filter and Tailscale subnet router for the lab LAN
+    hardware: Dell Inspiron 530 (2008), Core 2, ~3 GB DDR2, PNY CS900 250 GB SSD
+    os: OPNsense 26.7.8_2 (FreeBSD)
+    status: running
+    formerly: Arch (July 2026 plan name)
+    interfaces:
+      - { name: bge0, role: WAN, ip: 192.168.1.223/24, network: family-lan, speed: 1000baseT }
+      - { name: em0, role: LAN, ip: 192.168.10.1/24, network: lab-lan, speed: 100baseTX, notes: "Onboard 82562V-2 is 10/100 only: caps the lab at ~90 Mbit/s" }
+      - { name: tailscale0, role: VPN, ip: 100.116.54.77, network: tailnet }
+    ports:
+      - { port: 22,    proto: tcp, service: sshd,       bind: all,          via: tailscale }
+      - { port: 53,    proto: tcp/udp, service: Unbound DNS + DNSBL, bind: all, via: direct }
+      - { port: 67,    proto: udp, service: dnsmasq DHCP, bind: all,        via: direct }
+      - { port: 80,    proto: tcp, service: OPNsense web UI (redirect), bind: all, via: direct }
+      - { port: 443,   proto: tcp, service: OPNsense web UI, bind: all,     via: tailscale }
+      - { port: 123,   proto: udp, service: ntpd,       bind: all,          via: direct }
+      - { port: 161,   proto: udp, service: "snmpd (SNMPv3, Checkmk)", bind: 192.168.10.1, via: direct }
+      - { port: 3493,  proto: tcp, service: upsd (NUT server), bind: 192.168.10.1, via: direct }
+      - { port: 41641, proto: udp, service: tailscaled, bind: all,          via: direct }
+    web: https://192.168.10.1
+    depends_on: []
+    monitored: { checkmk: true, wazuh: "001" }
+    backup: OPNsense config export (kept off-repo; never committed)
+
+  - slug: thearchivist
+    name: The Archivist
+    kind: physical
+    group: physical
+    role: Proxmox VE hypervisor running every lab service
+    hardware: Dell PowerEdge R710, 24 threads (2x Xeon E5645), 94 GiB RAM, PERC 6/i
+    os: Proxmox VE 9.2.26 (kernel 7.0.14-28-pve)
+    status: running
+    schedule: Powers off 23:00, RTC wake 07:45 (nightly-poweroff cron)
+    interfaces:
+      - { name: vmbr0, role: LAN bridge (nic0), ip: 192.168.10.202/24, network: lab-lan }
+      - { name: vmbr1, role: Isolated range bridge, ip: null, network: range }
+      - { name: idrac, role: Out-of-band management, ip: 192.168.10.245, network: lab-lan, notes: "Not answering on 443 at 2026-11-12 check" }
+    storage:
+      - { id: local,     type: dir,     device: "sda (232 GB, PERC VD)", use: "ISOs, templates, host root" }
+      - { id: local-lvm, type: lvmthin, device: sda, size: 150 GiB, use: "Guest root disks (60% full, 2.35x overprovisioned)" }
+      - { id: archive,   type: dir,     device: sdb (931 GB), use: "Immich library, Takeout, DNS logs, samba share, budget backups" }
+      - { id: bulk2t,    type: dir,     device: sdc (1.8 TB), use: Media library and torrents (/data) }
+      - { id: pbs,       type: pbs,     device: "sdd (1.8 TB, passed through to VM 150)", use: "vzdump + file-level backups" }
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,                  bind: all, via: direct }
+      - { port: 111,  proto: tcp, service: rpcbind,               bind: all, via: direct }
+      - { port: 3128, proto: tcp, service: spiceproxy,            bind: all, via: direct }
+      - { port: 6556, proto: tcp, service: Checkmk agent,         bind: all, via: direct }
+      - { port: 8006, proto: tcp, service: Proxmox web UI / API,  bind: all, via: direct }
+    web: https://192.168.10.202:8006
+    depends_on: [sentrygate]
+    monitored: { checkmk: true, wazuh: "002" }
+    backup: Host config not backed up by PBS; configs live in this repo
+
+  # ---------------------------------------------------------------- LXC
+  - slug: ct100-jellyfin
+    name: jellyfin
+    kind: lxc
+    vmid: 100
+    runs_on: thearchivist
+    role: Media server (movies and TV) for the family
+    os: Ubuntu 24.04.5 LTS
+    ip: 192.168.10.207
+    resources: { cores: 12, memory_mb: 6144, disk_gb: 16 }
+    mounts: ["/mnt/pve/bulk2t/data/media → /media"]
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,           bind: all, via: direct }
+      - { port: 8096, proto: tcp, service: Jellyfin,       bind: all, via: caddy }
+      - { port: 6556, proto: tcp, service: Checkmk agent,  bind: all, via: direct }
+    web: https://jellyfin.home.arpa
+    depends_on: [ct103-caddy, sentrygate]
+    monitored: { checkmk: true, wazuh: "014" }
+    backup: vzdump → PBS nightly 21:00 (media on bulk2t not backed up)
+
+  - slug: ct102-ntfy
+    name: ntfy
+    kind: lxc
+    vmid: 102
+    runs_on: thearchivist
+    role: Push-notification server; every alert in the lab ends here
+    os: Debian 13
+    ip: 192.168.10.203
+    resources: { cores: 1, memory_mb: 512, disk_gb: 2 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,          bind: all, via: direct }
+      - { port: 80,   proto: tcp, service: ntfy,          bind: all, via: caddy }
+      - { port: 6556, proto: tcp, service: Checkmk agent, bind: all, via: direct }
+    web: http://ntfy.home.arpa
+    depends_on: [sentrygate]
+    monitored: { checkmk: true, wazuh: "004" }
+    backup: vzdump → PBS nightly 21:00
+
+  - slug: ct103-caddy
+    name: caddy
+    kind: lxc
+    vmid: 103
+    runs_on: thearchivist
+    role: Reverse proxy with an internal CA for every *.home.arpa name
+    os: Debian 13
+    ip: 192.168.10.201
+    resources: { cores: 1, memory_mb: 512, disk_gb: 4 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,           bind: all, via: direct }
+      - { port: 80,   proto: tcp, service: Caddy HTTP,     bind: all, via: direct }
+      - { port: 443,  proto: tcp, service: Caddy HTTPS (tls internal), bind: all, via: direct }
+      - { port: 6556, proto: tcp, service: Checkmk agent,  bind: all, via: direct }
+    routes:
+      - { name: jellyfin.home.arpa,    upstream: "192.168.10.207:8096" }
+      - { name: budget.home.arpa,      upstream: "192.168.10.206:3000" }
+      - { name: vaultwarden.home.arpa, upstream: "192.168.10.205:8000" }
+      - { name: ntfy.home.arpa,        upstream: "192.168.10.203:80", notes: plain HTTP }
+      - { name: wazuh.home.arpa,       upstream: "192.168.10.204:443" }
+      - { name: immich.home.arpa,      upstream: "192.168.10.208:2283" }
+      - { name: checkmk.home.arpa,     upstream: "192.168.10.215:80" }
+      - { name: actual.home.arpa,      upstream: "192.168.10.206:5006", notes: "Stale: Actual Budget retired, nothing listens on 5006" }
+    web: null
+    depends_on: [sentrygate]
+    monitored: { checkmk: true, wazuh: "005" }
+    backup: vzdump → PBS nightly 21:00
+
+  - slug: ct104-wazuh
+    name: wazuh
+    kind: lxc
+    vmid: 104
+    runs_on: thearchivist
+    role: SIEM — Wazuh manager, indexer and dashboard
+    os: Debian 13
+    ip: 192.168.10.204
+    resources: { cores: 4, memory_mb: 16384, disk_gb: 64 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,    proto: tcp, service: sshd,                     bind: all, via: direct }
+      - { port: 443,   proto: tcp, service: Wazuh dashboard,          bind: all, via: caddy }
+      - { port: 1514,  proto: tcp, service: wazuh-remoted (agent events), bind: all, via: direct }
+      - { port: 1515,  proto: tcp, service: "wazuh-authd (enrollment, password)", bind: all, via: direct }
+      - { port: 55000, proto: tcp, service: Wazuh API,                bind: all, via: direct }
+      - { port: 6556,  proto: tcp, service: Checkmk agent,            bind: all, via: direct }
+    web: https://wazuh.home.arpa
+    depends_on: [sentrygate]
+    monitored: { checkmk: true, wazuh: "000 (manager)" }
+    backup: vzdump → PBS nightly 21:00
+
+  - slug: ct105-nuclei-scanner
+    name: nuclei-scanner
+    kind: lxc
+    vmid: 105
+    runs_on: thearchivist
+    role: Vulnerability scanner (Nuclei), run on demand
+    os: not checked (stopped)
+    ip: dhcp
+    resources: { cores: 2, memory_mb: 2048, disk_gb: 15 }
+    onboot: false
+    status: stopped
+    ports: []
+    web: null
+    depends_on: [sentrygate]
+    monitored: { checkmk: false, wazuh: null }
+    backup: vzdump → PBS nightly 21:00 (when present)
+
+  - slug: ct107-dns-audit
+    name: dns-audit
+    kind: lxc
+    vmid: 107
+    runs_on: thearchivist
+    role: DNS accountability — attests Sentry's blocking config and reviews DNS logs
+    os: not checked (stopped)
+    ip: dhcp
+    resources: { cores: 6, memory_mb: 8192, disk_gb: 32 }
+    mounts: ["/mnt/pve/archive/dnslogs → /srv/dnslogs", "/mnt/pve/bulk2t/models → /srv/models"]
+    onboot: false
+    status: stopped
+    ports: []
+    web: null
+    depends_on: [sentrygate, ct102-ntfy]
+    monitored: { checkmk: false, wazuh: "007" }
+    backup: vzdump → PBS nightly 21:00
+
+  - slug: ct108-immich
+    name: immich
+    kind: lxc
+    vmid: 108
+    runs_on: thearchivist
+    role: Family photo library (Immich)
+    os: Debian 13
+    ip: 192.168.10.208
+    resources: { cores: 8, memory_mb: 8192, disk_gb: 32 }
+    mounts: ["/mnt/pve/archive/immich → /mnt/immich"]
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,                   bind: all, via: direct }
+      - { port: 2283, proto: tcp, service: Immich API + web,       bind: all, via: caddy }
+      - { port: 3003, proto: tcp, service: Immich machine learning, bind: all, via: direct }
+      - { port: 6556, proto: tcp, service: Checkmk agent,          bind: all, via: direct }
+    web: https://immich.home.arpa
+    depends_on: [ct103-caddy, sentrygate]
+    monitored: { checkmk: true, wazuh: "016" }
+    backup: vzdump → PBS nightly 21:00; library via pbs-precious (file-level, 21:45)
+
+  - slug: ct115-checkmk
+    name: checkmk
+    kind: lxc
+    vmid: 115
+    runs_on: thearchivist
+    role: Monitoring — Checkmk Community, 17 hosts, alerts to ntfy and the responder
+    os: Debian 13
+    ip: 192.168.10.215
+    resources: { cores: 2, memory_mb: 4096, disk_gb: 16 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,              bind: all, via: direct }
+      - { port: 80,   proto: tcp, service: Checkmk web (Apache), bind: all, via: caddy }
+      - { port: 8000, proto: tcp, service: Checkmk agent receiver, bind: all, via: direct }
+      - { port: 111,  proto: tcp, service: rpcbind,           bind: all, via: direct }
+      - { port: 6556, proto: tcp, service: Checkmk agent,     bind: all, via: direct }
+    web: https://checkmk.home.arpa
+    depends_on: [sentrygate, ct102-ntfy]
+    monitored: { checkmk: true, wazuh: null }
+    backup: vzdump → PBS nightly 21:00
+
+  - slug: ct116-responder
+    name: responder
+    kind: lxc
+    vmid: 116
+    runs_on: thearchivist
+    role: AI alert responder — Claude diagnoses Checkmk alerts, one-tap approved fixes; also categorizes Sure transactions
+    os: Debian 13
+    ip: 192.168.10.216
+    resources: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,                  bind: all,            via: direct }
+      - { port: 8787, proto: tcp, service: Responder approval API, bind: 192.168.10.216, via: tailscale }
+    web: null
+    depends_on: [ct115-checkmk, ct102-ntfy, sentrygate]
+    monitored: { checkmk: false, wazuh: null }
+    backup: vzdump → PBS nightly 21:00; LVM snapshots clean-base … pre-phase3
+
+  - slug: ct200-vaultwarden
+    name: vaultwarden
+    kind: lxc
+    vmid: 200
+    runs_on: thearchivist
+    role: Password manager (Bitwarden-compatible)
+    os: Debian 13
+    ip: 192.168.10.205
+    resources: { cores: 1, memory_mb: 512, disk_gb: 12 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 8000, proto: tcp, service: Vaultwarden,   bind: all, via: caddy }
+      - { port: 6556, proto: tcp, service: Checkmk agent, bind: all, via: direct }
+    notes: SSH deliberately disabled; administer with `pct exec 200`.
+    web: https://vaultwarden.home.arpa
+    depends_on: [ct103-caddy, sentrygate]
+    monitored: { checkmk: true, wazuh: "006" }
+    backup: vzdump → PBS nightly 21:00
+
+  # ---------------------------------------------------------------- VMs
+  - slug: vm101-samba
+    name: samba-vm
+    kind: vm
+    vmid: 101
+    runs_on: thearchivist
+    role: Family file server — four users, 100 GB quota each
+    os: Debian 13
+    ip: 192.168.10.120
+    tailscale_ip: 100.120.180.99
+    resources: { cores: 2, memory_mb: 2048, disk_gb: 16, data_disk_gb: 400 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,          bind: all, via: direct }
+      - { port: 139,  proto: tcp, service: Samba (NetBIOS), bind: all, via: direct }
+      - { port: 445,  proto: tcp, service: Samba (SMB),   bind: all, via: tailscale }
+      - { port: 6556, proto: tcp, service: Checkmk agent, bind: all, via: direct }
+    notes: "Address 192.168.10.120 is inside the DHCP pool (.100-.200); reserve or move it."
+    web: null
+    depends_on: [sentrygate]
+    monitored: { checkmk: true, wazuh: "003" }
+    backup: vzdump → PBS nightly 21:00
+
+  - slug: vm106-budget
+    name: budget
+    kind: vm
+    vmid: 106
+    runs_on: thearchivist
+    role: Personal finance — Sure (Rails) in Docker, SimpleFIN sync
+    os: Debian 13
+    ip: 192.168.10.206
+    resources: { cores: 4, memory_mb: 4096, disk_gb: 32, data_disk_gb: 20 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,                     bind: all, via: direct }
+      - { port: 3000, proto: tcp, service: "Sure web (Puma, 2 workers)", bind: all, via: caddy, notes: "Also published on 0.0.0.0 — bypasses Caddy (open follow-up)" }
+    web: https://budget.home.arpa
+    depends_on: [ct103-caddy, sentrygate]
+    monitored: { checkmk: false, wazuh: "015 (stale, as actualbudget)" }
+    backup: Sure's own scheduled backup to the archive disk (scsi1); vzdump → PBS nightly 21:00
+
+  - slug: vm150-pbs
+    name: pbs
+    kind: vm
+    vmid: 150
+    runs_on: thearchivist
+    role: Proxmox Backup Server — datastore store1 on a passed-through 2 TB disk
+    os: Debian 13 (Proxmox Backup Server)
+    ip: 192.168.10.220
+    resources: { cores: 2, memory_mb: 4096, disk_gb: 32, data_disk_gb: 1862 }
+    onboot: true
+    status: running
+    ports:
+      - { port: 22,   proto: tcp, service: sshd,            bind: all, via: direct }
+      - { port: 8007, proto: tcp, service: PBS web UI / API, bind: all, via: direct }
+      - { port: 6556, proto: tcp, service: Checkmk agent,   bind: all, via: direct }
+    web: https://192.168.10.220:8007
+    depends_on: [sentrygate]
+    monitored: { checkmk: true, wazuh: null }
+    backup: Excluded from vzdump (it is the backup target)
+
+  - slug: vm210-range-gw
+    name: range-gw
+    kind: vm
+    vmid: 210
+    runs_on: thearchivist
+    role: Attack-range gateway between the lab LAN and the isolated vmbr1
+    os: Linux
+    ip: null
+    networks: [lab-lan, range]
+    resources: { cores: 1, memory_mb: 512, disk_gb: 8 }
+    onboot: false
+    status: stopped
+    ports: []
+    web: null
+    depends_on: []
+    monitored: { checkmk: false, wazuh: null }
+    backup: Excluded from vzdump
+
+  - slug: vm211-target-juice
+    name: target-juice
+    kind: vm
+    vmid: 211
+    runs_on: thearchivist
+    role: Deliberately vulnerable target (OWASP Juice Shop) on the isolated range only
+    os: Linux
+    ip: null
+    networks: [range]
+    resources: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    onboot: false
+    status: stopped
+    ports: []
+    web: null
+    depends_on: [vm210-range-gw]
+    monitored: { checkmk: false, wazuh: null }
+    backup: "Excluded from vzdump; LVM snapshot `clean` is the reset point"
+
+  # ---------------------------------------------------------------- clients
+  - slug: omarchy
+    name: Omarchy laptop
+    kind: client
+    group: clients
+    role: Admin laptop; DNS pinned to Sentry, homelab status bar widget
+    os: Omarchy (Arch Linux)
+    tailscale_ip: 100.113.94.88
+    status: running
+    ports: []
+    depends_on: [sentrygate]
+    monitored: { checkmk: false, wazuh: null }
+
+  - slug: towerofpower
+    name: Tower
+    kind: client
+    group: clients
+    role: Dorm desktop (48 GB) — AD lab, Kali and Parrot VMs
+    os: Windows 11
+    tailscale_ip: 100.78.28.104
+    status: offline
+    notes: Tailscale showed it offline (last seen 1 day) at the 2026-11-12 check; it lives at the dorm site.
+    ports: []
+    depends_on: []
+    monitored: { checkmk: false, wazuh: null }

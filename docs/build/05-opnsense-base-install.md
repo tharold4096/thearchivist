@@ -1,3 +1,14 @@
+---
+title: "OPNsense base install (Sentry Gate)"
+date: 2026-07-29
+type: build
+status: in-progress
+hosts: [sentrygate]
+tags: [opnsense, build-series]
+summary: "Fill-from-memory retrieval write-up, part 05 of the July build series. Italic prompts are deliberately left for the author."
+verified: 2026-07-29
+open: 0
+---
 # OPNsense Installation — Sentry Gate (Dell Inspiron 530)
 
 ## Overview

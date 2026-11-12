@@ -1,10 +1,21 @@
+---
+title: "Booting OPNsense on 2008 hardware"
+date: 2026-07-28
+type: incident
+status: complete
+hosts: [sentrygate]
+tags: [opnsense, bios, boot, troubleshooting]
+summary: "OPNsense hung at the BIOS splash on the Inspiron 530; the cause was the GPT image format against a legacy BIOS, found by isolating one variable at a time."
+verified: 2026-07-28
+open: 0
+---
 # Booting a Modern BSD Firewall on 2008 Hardware
 
 Installing OPNsense 26.7 on a Dell Inspiron 530 took several failed attempts across two USB drives, three image formats, and one misleading diagnostic. The root cause turned out to be a partition table, and the most visible symptom — a dead keyboard — had nothing directly to do with the keyboard.
 
 This is written up in full because the diagnostic path is more useful than the fix.
 
-\---
+---
 
 ## The hardware
 
@@ -15,7 +26,7 @@ This is written up in full because the diagnostic path is more useful than the f
 |RAM|3GB DDR2|Adequate for firewall-only duty|
 |Storage|4x SATA II|Known-good, used to boot Ubuntu successfully|
 
-\---
+---
 
 ## The symptom
 
@@ -23,7 +34,7 @@ Powering on with the OPNsense USB inserted produced a freeze at the Dell splash 
 
 Removing the drive restored normal behavior. A second, different USB drive carrying the same image produced identical results.
 
-\---
+---
 
 ## Hypotheses, in the order they were tested
 
@@ -57,7 +68,7 @@ An Ubuntu Server installer USB was booted on the same machine, same port.
 
 *Result: worked perfectly, keyboard fully responsive.* This cleanly eliminated the USB ports, the controller, legacy USB support, and the attached SATA drive as causes. It also reframed the question: the problem isn't USB, it's **what's on the drive.**
 
-\---
+---
 
 ## Root cause
 
@@ -67,7 +78,7 @@ A GPT layout on a legacy-BIOS-only board from 2008 is exactly the kind of thing 
 
 **And the keyboard symptom follows directly from this.** On ICH9-era boards, legacy USB keyboard support is emulated by the BIOS's own USB stack via SMI traps. When that stack hangs partway through device enumeration, HID emulation dies along with it. The dead keyboard was never a separate fault — it was the visible edge of the BIOS being stuck.
 
-\---
+---
 
 ## Image format comparison
 
@@ -87,7 +98,7 @@ The `nano` image turned out to be the right answer for reasons beyond partition 
 * It is **designed for flash media** with reduced write activity, which addresses USB wear by design rather than by configuration
 * Despite documentation implying serial console orientation, **it output to VGA without any special handling** on this hardware
 
-\---
+---
 
 ## Post-install hardening for USB boot media
 
@@ -97,7 +108,7 @@ Flash media has finite write endurance, and a firewall writes continuously — s
 * **Tradeoff:** logs do not survive a reboot. Acceptable for a firewall; worth revisiting when an IDS starts generating real volume.
 * **Config backups matter more than usual.** The boot media is a consumable. An exported `config.xml` turns a dead USB stick into a ten-minute rebuild instead of an evening.
 
-\---
+---
 
 ## What generalizes
 
@@ -109,7 +120,7 @@ Flash media has finite write endurance, and a firewall writes continuously — s
 
 **Read the tools' warnings as data.** Two independent imaging tools rejecting the same file was information, not an obstacle to route around.
 
-\---
+---
 
 ## If this hardware had refused entirely
 

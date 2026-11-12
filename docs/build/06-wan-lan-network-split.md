@@ -1,3 +1,14 @@
+---
+title: "WAN/LAN split and addressing"
+date: 2026-07-29
+type: build
+status: in-progress
+hosts: [sentrygate]
+tags: [networking, build-series]
+summary: "Fill-from-memory retrieval write-up, part 06 of the July build series. Italic prompts are deliberately left for the author."
+verified: 2026-07-29
+open: 0
+---
 # WAN/LAN Interface Split and Addressing
 
 ## Overview

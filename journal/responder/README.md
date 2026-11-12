@@ -1,7 +1,7 @@
 # Responder journal
 
 Records in this directory are written and pushed **automatically** by the responder on CT 116
-(see [`hosts/responder/`](../../hosts/responder/)), one file per incident:
+(see [`hosts/lxc/ct116-responder/`](../../hosts/lxc/ct116-responder)), one file per incident:
 `YYYY/MM/<date>-<host>-<job id>.md`. Each event (diagnosis, approval, auto-run, denial, expiry)
 is appended as a section.
 

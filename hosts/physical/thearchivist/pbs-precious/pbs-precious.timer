@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly precious-data backup to PBS
+
+[Timer]
+OnCalendar=*-*-* 21:45
+Persistent=true
+
+[Install]
+WantedBy=timers.target

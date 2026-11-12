@@ -1,3 +1,14 @@
+---
+title: "iDRAC6 configuration"
+date: 2026-07-29
+type: build
+status: in-progress
+hosts: [thearchivist]
+tags: [idrac, oob, build-series]
+summary: "Fill-from-memory retrieval write-up, part 02 of the July build series. Italic prompts are deliberately left for the author."
+verified: 2026-07-29
+open: 0
+---
 # iDRAC6 Configuration and Firmware Update
 
 ## Overview

@@ -65,20 +65,21 @@ Sentry Gate currently runs on a single interface as a staging environment. It is
 ## Repo contents
 
 ```
-docs/overview/     what the lab is: project plan, implementation tracker, hardware, design context
-docs/build/        the July 2026 build-out, in order: install steps 01-09, build log, boot and network work
-docs/writeups/     dated operations writeups (Sept 2026 onward), one per change; WRITEUP_TEMPLATE.md
-hosts/<machine>/   every config fragment, filed under the machine it is deployed on
-  thearchivist/    Proxmox host: weekly patch runner, thin-pool alerting, nightly poweroff, LXC DNS fix
-  sentrygate/      OPNsense: Wazuh agent buffering, DNS-blocklist log shipping
-  wazuh/           manager rules, LXC agent enrollment, index retention
-  checkmk/         monitoring: Caddy route, rule export, ntfy and responder notification plugins
-  ntfy/            push server: ACL layout, server config change
-  dns-audit/       configuration attestation script
-  omarchy/         admin laptop: DNS guard
-  responder/       CT 116: alert diagnosis by Claude with approval-gated remediation
-journal/responder/ incident records the responder publishes automatically
+hosts/                 one folder per machine: summary README + every config deployed on it
+  inventory.yml        machine-readable inventory (IPs, ports, roles) — the website reads this
+  physical/            sentrygate (OPNsense firewall), thearchivist (Proxmox host)
+  lxc/ctNNN-name/      Proxmox containers by VMID: jellyfin, ntfy, caddy, wazuh, checkmk, responder, …
+  vm/vmNNN-name/       Proxmox VMs by VMID: samba, budget (Sure), pbs, attack range
+  clients/             omarchy (admin laptop), towerofpower (dorm desktop)
+docs/
+  writeups/            one doc per piece of work, by type: builds/ changes/ updates/ incidents/
+  templates/           host, change, update, incident and build templates + front-matter rules
+  overview/            architecture, project plan, background investigations
+  build/               the July 2026 build-out series
+journal/responder/     incident records the responder publishes automatically
 ```
+
+Start at [`hosts/README.md`](hosts/README.md) for the machine list or [`docs/writeups/README.md`](docs/writeups/README.md) for the dated change log.
 
 Secrets never live here: credentials and ntfy topic names are `<SET-ON-HOST>` placeholders, and each file names the host-side path that holds the real value.
 
@@ -87,9 +88,9 @@ Secrets never live here: credentials and ntfy topic names are `<SET-ON-HOST>` pl
 | [`docs/build/2026-07-27-build-log.md`](docs/build/2026-07-27-build-log.md) | Chronological record of the initial build, session by session |
 | [`docs/build/2026-07-28-opnsense-legacy-bios-boot.md`](docs/build/2026-07-28-opnsense-legacy-bios-boot.md) | Getting a modern BSD firewall to boot on 2008 hardware: the longest and most instructive troubleshooting sequence in the project |
 | [`docs/build/2026-07-29-remote-access-tailscale.md`](docs/build/2026-07-29-remote-access-tailscale.md) | Mesh VPN access to the firewall, and debugging why a correct-looking rule silently dropped traffic |
-| [`docs/build/2026-07-29-network-architecture.md`](docs/build/2026-07-29-network-architecture.md) | Design decisions, addressing plan, DNS hardening, and what was deliberately left out |
-| [`docs/writeups/2026-10-12-checkmk-rollout.md`](docs/writeups/2026-10-12-checkmk-rollout.md) | Monitoring 17 hosts with Checkmk and a dependency-aware alert path |
-| [`hosts/responder/README.md`](hosts/responder/README.md) | The responder: trust boundary, approval flow, learned approvals |
+| [`docs/overview/network-architecture.md`](docs/overview/network-architecture.md) | Design decisions, addressing plan, DNS hardening, and what was deliberately left out |
+| [`docs/writeups/builds/2026-10-12-checkmk-rollout.md`](docs/writeups/builds/2026-10-12-checkmk-rollout.md) | Monitoring 17 hosts with Checkmk and a dependency-aware alert path |
+| [`hosts/lxc/ct116-responder/README.md`](hosts/lxc/ct116-responder/README.md) | The responder: trust boundary, approval flow, learned approvals |
 
 ---
 

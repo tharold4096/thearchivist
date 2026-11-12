@@ -1,3 +1,14 @@
+---
+title: "RAID and storage (PERC 6/i)"
+date: 2026-07-29
+type: build
+status: in-progress
+hosts: [thearchivist]
+tags: [raid, storage, build-series]
+summary: "Fill-from-memory retrieval write-up, part 03 of the July build series. Italic prompts are deliberately left for the author."
+verified: 2026-07-29
+open: 0
+---
 # RAID Controller and Storage Configuration — PERC 6/i
 
 ## Overview
