@@ -1,0 +1,18 @@
+---
+import { hostBySlug } from '../lib/inventory';
+import { url } from '../lib/paths';
+
+interface Props {
+  slug: string;
+  /** on the map, chips select the host instead of leaving the page */
+  select?: boolean;
+  quiet?: boolean;
+}
+const { slug, select = false, quiet = false } = Astro.props;
+const h = hostBySlug.get(slug)!;
+---
+<a class:list={['chip', { 'is-quiet': quiet }]} href={url(`hosts/${h.slug}`)} data-select-host={select ? h.slug : undefined} data-status={h.status}>
+  {!quiet && <span class="pip" />}
+  {h.name}
+  {!quiet && h.vmid && <span class="num">{h.vmid}</span>}
+</a>

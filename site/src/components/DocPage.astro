@@ -1,0 +1,63 @@
+---
+// One readable document: a writeup, a host note or a journal record.
+import { TYPE_LABEL, type Doc, type JournalDoc } from '../lib/docs';
+import { shortDate } from '../lib/format';
+import { url } from '../lib/paths';
+import { githubBlob } from '../lib/repo';
+import Base from '../layouts/Base.astro';
+import HostChip from './HostChip.astro';
+
+interface Props {
+  doc: Doc;
+  crumbs: { label: string; href: string }[];
+  section: 'writeups' | 'hosts';
+}
+const { doc, crumbs, section } = Astro.props;
+const toc = doc.headings.filter((h) => h.depth === 2);
+const journal = doc.type === 'responder' ? (doc as JournalDoc) : undefined;
+const showToc = !journal && toc.length >= 3;
+const STATUS: Record<string, string> = { complete: 'Complete', 'in-progress': 'In progress', superseded: 'Superseded' };
+---
+<Base title={doc.title} section={section} description={doc.summary || undefined}>
+  <ol class="crumbs">
+    {crumbs.map((c) => <li><a href={c.href}>{c.label}</a></li>)}
+    <li aria-current="page">{doc.title}</li>
+  </ol>
+
+  <article>
+    <header class="doc-head">
+      <div class="doc-meta">
+        <span class="tag" data-type={doc.type}>{TYPE_LABEL[doc.type]}</span>
+        {doc.date && <time class="num" datetime={doc.date}>{shortDate(doc.date)}</time>}
+        {!journal && STATUS[doc.status] && <span>{STATUS[doc.status]}</span>}
+        {doc.verified && <span>Checked live <b class="num">{shortDate(doc.verified)}</b></span>}
+        {doc.open > 0 && <a class="tag is-open" href="#follow-ups">{doc.open} open</a>}
+        {journal && <span>Job <b class="num">{journal.job}</b></span>}
+      </div>
+      <h1>{doc.title}</h1>
+      {doc.summary && !journal && <p class="summary">{doc.summary}</p>}
+      {journal && (
+        <ol class="events" aria-label="Events in this record">
+          {journal.events.map((e) => <li><span class="num">{e.time.slice(11, 16)}</span>{e.kind}</li>)}
+        </ol>
+      )}
+      <div class="doc-links">
+        {doc.hosts.map((s) => <HostChip slug={s} />)}
+        {doc.tags.filter((t) => t !== 'responder').map((t) => <a class="chip is-quiet" href={url(`writeups/?tag=${encodeURIComponent(t)}`)}>{t}</a>)}
+      </div>
+    </header>
+
+    <div class:list={['doc-layout', { 'is-single': !showToc }]}>
+      <div class="prose" set:html={doc.html} />
+      {showToc && (
+        <nav class="toc" aria-label="On this page">
+          <h2>On this page</h2>
+          <ol>{toc.map((h) => <li><a href={`#${h.id}`}>{h.text}</a></li>)}</ol>
+        </nav>
+      )}
+    </div>
+    <p class="muted" style="margin-top:40px;font-size:.875rem">
+      Source: <a class="num" href={githubBlob(doc.source)} rel="noopener">{doc.source}</a>
+    </p>
+  </article>
+</Base>

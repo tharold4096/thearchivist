@@ -1,0 +1,18 @@
+---
+import DocPage from '../../components/DocPage.astro';
+import { journal } from '../../lib/docs';
+import { url } from '../../lib/paths';
+
+export function getStaticPaths() {
+  return journal.map((doc) => ({ params: { id: doc.route.replace(/^journal\//, '') }, props: { doc } }));
+}
+const { doc } = Astro.props;
+---
+<DocPage
+  doc={doc}
+  section="writeups"
+  crumbs={[
+    { label: 'Writeups', href: url('writeups') },
+    { label: 'Responder journal', href: url('writeups/?type=responder') },
+  ]}
+/>

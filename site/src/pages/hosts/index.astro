@@ -1,0 +1,88 @@
+---
+import StatusBadge from '../../components/StatusBadge.astro';
+import Base from '../../layouts/Base.astro';
+import { openCountForHost } from '../../lib/docs';
+import { shortDate } from '../../lib/format';
+import { GROUPS, hostBySlug, hosts, statusSnapshot } from '../../lib/inventory';
+import { url } from '../../lib/paths';
+
+const groups = GROUPS.map((g) => ({
+  ...g,
+  hosts: hosts.filter((h) => h.group === g.id).sort((a, b) => (a.vmid ?? 0) - (b.vmid ?? 0)),
+})).filter((g) => g.hosts.length);
+---
+<Base title="Hosts" section="hosts" description="Every host in the lab with its addresses and listening ports.">
+  <header class="page-head">
+    <h1>Hosts</h1>
+    <p class="lede">
+      Every machine, container and VM with its address and the ports it listens on.
+      A port outlined in orange is reached through Caddy or Tailscale, not directly.
+      Status as observed {shortDate(statusSnapshot.asOf)}.
+    </p>
+    <div class="filter-bar">
+      <input class="field" type="search" placeholder="Filter by name, address, port or service" aria-label="Filter hosts" data-host-filter />
+      <span class="filter-count" data-host-count aria-live="polite">{hosts.length} hosts</span>
+    </div>
+  </header>
+
+  {groups.map((g) => (
+    <section class="host-group" data-host-group>
+      <h2>{g.label}</h2>
+      <ul class="host-rows">
+        {g.hosts.map((h) => {
+          const open = openCountForHost(h.slug);
+          const text = [h.name, h.slug, h.role, h.os, h.idLabel, ...h.addresses.map((a) => a.ip), ...h.ports.map((p) => `${p.port} ${p.service}`), ...h.routes.map((r) => r.name)].join(' ').toLowerCase();
+          return (
+            <li class="host-row" data-text={text}>
+              <div class="host-row-name">
+                <a href={url(`hosts/${h.slug}`)}>{h.name}</a>
+                <div class="sub">
+                  <span>{h.kind === 'lxc' || h.kind === 'vm' ? `${h.idLabel} on ${hostBySlug.get(h.runs_on!)?.name}` : h.kindLabel}</span>
+                </div>
+              </div>
+              <div class="host-row-addr">
+                {h.addresses.length > 0
+                  ? h.addresses.map((a) => <span><span class="num">{a.ip}</span><span class="addr-label">{a.label}</span></span>)
+                  : <span class="muted">{h.dhcp ? 'DHCP lease' : 'No address'}</span>}
+              </div>
+              <div class="host-row-ports">
+                <p class="host-row-role">{h.role}</p>
+                {h.ports.length > 0 && (
+                  <ul class="port-list">
+                    {h.ports.map((p) => <li data-via={p.via} title={`${p.proto}, reached via ${p.via}`}><b>{p.port}</b>{p.service}</li>)}
+                  </ul>
+                )}
+              </div>
+              <div class="host-row-end">
+                <StatusBadge status={h.status} host={h.slug} />
+                {open > 0 && <span class="tag is-open">{open} open</span>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  ))}
+  <p class="empty" data-host-empty hidden>No host matches that filter. Clear it to see all {hosts.length}.</p>
+
+  <script>
+    const input = document.querySelector<HTMLInputElement>('[data-host-filter]')!;
+    const count = document.querySelector<HTMLElement>('[data-host-count]')!;
+    const empty = document.querySelector<HTMLElement>('[data-host-empty]')!;
+    const rows = [...document.querySelectorAll<HTMLElement>('.host-row')];
+    function apply() {
+      const terms = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const r of rows) {
+        const ok = terms.every((t) => r.dataset.text!.includes(t));
+        r.hidden = !ok;
+        if (ok) shown++;
+      }
+      document.querySelectorAll<HTMLElement>('[data-host-group]').forEach((g) => (g.hidden = !g.querySelector('.host-row:not([hidden])')));
+      count.textContent = terms.length ? `${shown} of ${rows.length} hosts` : `${rows.length} hosts`;
+      empty.hidden = shown > 0;
+    }
+    input.addEventListener('input', apply);
+    apply();
+  </script>
+</Base>

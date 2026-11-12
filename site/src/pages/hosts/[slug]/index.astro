@@ -1,0 +1,243 @@
+---
+import Chevron from '../../../components/Chevron.astro';
+import HostChip from '../../../components/HostChip.astro';
+import PortsTable from '../../../components/PortsTable.astro';
+import StatusBadge from '../../../components/StatusBadge.astro';
+import Base from '../../../layouts/Base.astro';
+import { TYPE_LABEL, docsForHost, followUps, hostPages, notesForHost } from '../../../lib/docs';
+import { memory, shortDate } from '../../../lib/format';
+import { hostBySlug, hosts, networkById, statusSnapshot } from '../../../lib/inventory';
+import { url } from '../../../lib/paths';
+import { githubTree } from '../../../lib/repo';
+
+export function getStaticPaths() {
+  return hosts.map((h) => ({ params: { slug: h.slug } }));
+}
+
+const h = hostBySlug.get(Astro.params.slug!)!;
+const page = hostPages.get(h.slug)!;
+const parent = h.runs_on ? hostBySlug.get(h.runs_on) : undefined;
+const history = docsForHost(h.slug);
+const notes = notesForHost(h.slug);
+const fromWriteups = followUps.filter((g) => g.origin === 'writeup' && g.hosts.includes(h.slug));
+const guests = h.guests.map((s) => hostBySlug.get(s)!).sort((a, b) => (a.vmid ?? 0) - (b.vmid ?? 0));
+const r = h.resources;
+const resources = r
+  ? [
+      r.cores && `${r.cores} ${r.cores === 1 ? 'core' : 'cores'}`,
+      r.memory_mb && `${memory(r.memory_mb)} RAM`,
+      r.disk_gb && `${r.disk_gb} GB root disk`,
+      r.data_disk_gb && `${r.data_disk_gb} GB data disk`,
+    ].filter(Boolean).join(', ')
+  : undefined;
+const monitoring = [h.monitored.checkmk && 'Checkmk', h.monitored.wazuh && `Wazuh agent ${h.monitored.wazuh}`].filter(Boolean).join(', ');
+---
+<Base title={h.name} section="hosts" description={h.role}>
+  <ol class="crumbs">
+    <li><a href={url(`#${h.slug}`)}>Topology</a></li>
+    {parent && <li><a href={url(`hosts/${parent.slug}`)}>{parent.name}</a></li>}
+    <li aria-current="page">{h.name}</li>
+  </ol>
+
+  <header class="host-head">
+    <div>
+      <h1>{h.name}</h1>
+      <p class="sub">
+        <StatusBadge status={h.status} host={h.slug} />
+        <span>as observed {shortDate(statusSnapshot.asOf)}</span>
+        <span>{h.kind === 'lxc' || h.kind === 'vm' ? `${h.kindLabel} ${h.vmid} on ${parent?.name}` : h.kindLabel}</span>
+      </p>
+    </div>
+    <a class="button is-plain" href={url(`#${h.slug}`)}>Show on the map <Chevron /></a>
+    <p class="lede" set:html={page.lede ?? h.role} />
+  </header>
+
+  <div class="host-body">
+    <div class="host-main">
+      <section aria-labelledby="addresses">
+        <h2 id="addresses">Addresses</h2>
+        {h.addresses.length > 0 ? (
+          <ul class="addresses is-large">
+            {h.addresses.map((a) => (
+              <li>
+                <span class="num">{a.ip}</span>
+                <span class="addr-label">
+                  {a.role ? `${a.label}, ${a.role}` : a.label} on {networkById.get(a.network)?.name}
+                  {a.notes && <span class="cell-note">{a.notes}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="muted">{h.dhcp ? 'Takes a DHCP lease on the lab LAN when it runs; it has no fixed address.' : 'No address of its own on the lab LAN.'}</p>
+        )}
+        {h.web && <p style="margin-top:12px">Web UI: <a class="num" href={h.web} rel="noopener">{h.web}</a> <span class="muted">(reachable from the lab or the tailnet only)</span></p>}
+        {h.proxiedBy.length > 0 && (
+          <p style="margin-top:8px">
+            Fronted by <a href={url(`hosts/${h.proxiedBy[0].via}`)}>{hostBySlug.get(h.proxiedBy[0].via)?.name}</a> as
+            {h.proxiedBy.map((p, i) => <>{i > 0 && ','} <span class="num">{p.name}</span></>)}.
+          </p>
+        )}
+      </section>
+
+      <section aria-labelledby="ports">
+        <h2 id="ports">Ports</h2>
+        <PortsTable ports={h.ports} />
+      </section>
+
+      {h.routes.length > 0 && (
+        <section aria-labelledby="routes">
+          <h2 id="routes">Reverse-proxy routes</h2>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th scope="col">Name</th><th scope="col">Upstream</th><th scope="col">Host</th></tr></thead>
+              <tbody>
+                {h.routes.map((rt) => (
+                  <tr>
+                    <td class="num">{rt.name}{rt.notes && <span class="cell-note">{rt.notes}</span>}</td>
+                    <td class="num">{rt.upstream}</td>
+                    <td>{rt.target && <a href={url(`hosts/${rt.target}`)}>{hostBySlug.get(rt.target)?.name}</a>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {h.interfaces.length > 0 && (
+        <section aria-labelledby="interfaces">
+          <h2 id="interfaces">Interfaces</h2>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th scope="col">Name</th><th scope="col">Role</th><th scope="col">Address</th><th scope="col">Network</th></tr></thead>
+              <tbody>
+                {h.interfaces.map((i) => (
+                  <tr>
+                    <td class="num">{i.name}</td>
+                    <td>{i.role}{i.notes && <span class="cell-note">{i.notes}</span>}</td>
+                    <td class="num">{i.ip ?? 'none'}</td>
+                    <td>{networkById.get(i.network)?.name}{i.speed && <span class="cell-note num">{i.speed}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {h.storage.length > 0 && (
+        <section aria-labelledby="storage">
+          <h2 id="storage">Storage</h2>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th scope="col">Proxmox storage</th><th scope="col">Type</th><th scope="col">Device</th><th scope="col">Used for</th></tr></thead>
+              <tbody>
+                {h.storage.map((s) => (
+                  <tr>
+                    <td class="num">{s.id}</td>
+                    <td>{s.type}</td>
+                    <td>{s.device}{s.size && `, ${s.size}`}</td>
+                    <td>{s.use}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {guests.length > 0 && (
+        <section aria-labelledby="guests">
+          <h2 id="guests">Guests</h2>
+          <ul class="chips">{guests.map((g) => <li><HostChip slug={g.slug} /></li>)}</ul>
+        </section>
+      )}
+
+      {page.sections.map((s) => (
+        <section aria-labelledby={s.id}>
+          <h2 id={s.id}>{s.heading}</h2>
+          <div class="prose" set:html={s.html} />
+        </section>
+      ))}
+
+      {history.length > 0 && (
+        <section aria-labelledby="history">
+          <h2 id="history">History</h2>
+          <ul class="history">
+            {history.map((d) => (
+              <li>
+                <time class="num" datetime={d.date}>{shortDate(d.date)}</time>
+                <span class="tag" data-type={d.type}>{TYPE_LABEL[d.type]}</span>
+                <a href={url(d.route)}>{d.title}</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+
+    <aside class="host-side">
+      <section aria-labelledby="facts">
+        <h2 id="facts">At a glance</h2>
+        <dl class="facts">
+          <dt>Role</dt><dd>{h.role}</dd>
+          {h.os && (<><dt>OS</dt><dd>{h.os}</dd></>)}
+          {h.hardware && (<><dt>Hardware</dt><dd>{h.hardware}</dd></>)}
+          {resources && (<><dt>Resources</dt><dd>{resources}</dd></>)}
+          {h.mounts.length > 0 && (<><dt>Mounts</dt><dd>{h.mounts.map((m) => <span class="num" style="display:block">{m}</span>)}</dd></>)}
+          {h.onboot !== undefined && (<><dt>Boot</dt><dd>{h.onboot ? 'Starts with the host' : 'Started by hand'}</dd></>)}
+          {h.schedule && (<><dt>Schedule</dt><dd>{h.schedule}</dd></>)}
+          <dt>Monitored by</dt><dd>{monitoring || 'Nothing yet'}</dd>
+          {h.backup && (<><dt>Backed up by</dt><dd>{h.backup}</dd></>)}
+          {h.formerly && (<><dt>Formerly</dt><dd>{h.formerly}</dd></>)}
+        </dl>
+        {h.notes && <p class="muted" style="margin-top:12px">{h.notes}</p>}
+      </section>
+
+      {(h.depends_on.length > 0 || h.needed_by.length > 0) && (
+        <section aria-labelledby="deps">
+          <h2 id="deps">Dependencies</h2>
+          {h.depends_on.length > 0 && (
+            <>
+              <p class="muted" style="margin-bottom:6px">Needs</p>
+              <ul class="chips">{h.depends_on.map((s) => <li><HostChip slug={s} /></li>)}</ul>
+            </>
+          )}
+          {h.needed_by.length > 0 && (
+            <>
+              <p class="muted" style="margin:14px 0 6px">Needed by</p>
+              <ul class="chips">{h.needed_by.map((s) => <li><HostChip slug={s} /></li>)}</ul>
+            </>
+          )}
+        </section>
+      )}
+
+      {(page.followUps.length > 0 || fromWriteups.length > 0) && (
+        <section aria-labelledby="open">
+          <h2 id="open">Open follow-ups</h2>
+          {page.followUps.length > 0 && (
+            <ul class="followup-list">{page.followUps.map((f) => <li set:html={f.html} />)}</ul>
+          )}
+          {fromWriteups.length > 0 && (
+            <p style="margin-top:12px">
+              <a href={url(`follow-ups/?host=${h.slug}`)}>
+                {fromWriteups.reduce((n, g) => n + g.items.length, 0)} more in writeups that touch this host
+              </a>
+            </p>
+          )}
+        </section>
+      )}
+
+      <section aria-labelledby="files">
+        <h2 id="files">In the repo</h2>
+        {notes.length > 0 && (
+          <ul class="history" style="margin-bottom:12px">
+            {notes.map((n) => <li style="grid-template-columns:minmax(0,1fr)"><a href={url(n.route)}>{n.title}</a></li>)}
+          </ul>
+        )}
+        <p><a href={githubTree(h.dir)} rel="noopener">Configs and scripts for {h.name} on GitHub</a></p>
+      </section>
+    </aside>
+  </div>
+</Base>

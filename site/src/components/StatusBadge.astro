@@ -1,0 +1,13 @@
+---
+import { STATUS_LABEL, type Status } from '../lib/inventory';
+
+interface Props {
+  status: Status;
+  /** host slug, so a later live loader can find and update this badge */
+  host?: string;
+}
+const { status, host } = Astro.props;
+---
+<span class="status" data-status={status} data-status-host={host}>
+  <span class="pip"></span><span class="status-label">{STATUS_LABEL[status]}</span>
+</span>

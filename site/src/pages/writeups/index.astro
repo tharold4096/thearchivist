@@ -1,0 +1,138 @@
+---
+import DocRow from '../../components/DocRow.astro';
+import Base from '../../layouts/Base.astro';
+import { TYPE_LABEL, listedDocs, type DocType } from '../../lib/docs';
+import { monthLabel } from '../../lib/format';
+import { hostBySlug } from '../../lib/inventory';
+
+const months: { key: string; label: string; docs: typeof listedDocs }[] = [];
+for (const d of listedDocs) {
+  const key = d.date.slice(0, 7);
+  let m = months.find((x) => x.key === key);
+  if (!m) months.push((m = { key, label: monthLabel(d.date), docs: [] }));
+  m.docs.push(d);
+}
+
+const typeOrder: DocType[] = ['build', 'change', 'update', 'incident', 'reference', 'responder'];
+const types = typeOrder.map((t) => ({ id: t, label: TYPE_LABEL[t], count: listedDocs.filter((d) => d.type === t).length }));
+
+const hostSlugs = [...new Set(listedDocs.flatMap((d) => d.hosts))].sort((a, b) => hostBySlug.get(a)!.name.localeCompare(hostBySlug.get(b)!.name));
+const tags = [...new Set(listedDocs.flatMap((d) => d.tags))].sort();
+---
+<Base title="Writeups" section="writeups" description="Builds, changes, incidents and reference notes for the homelab, newest first.">
+  <header class="page-head">
+    <h1>Writeups</h1>
+    <p class="lede">
+      One document per piece of work, newest first: what was built or changed, what broke, and what the alert responder did about it.
+    </p>
+
+    <form class="filter-bar" data-doc-filter onsubmit="return false">
+      <div class="seg" role="group" aria-label="Type">
+        <button type="button" data-type="" aria-pressed="true">All<span class="num">{listedDocs.length}</span></button>
+        {types.map((t) => (
+          <button type="button" data-type={t.id} aria-pressed="false" disabled={t.count === 0} title={t.count === 0 ? 'None written yet' : undefined}>
+            {t.label}<span class="num">{t.count}</span>
+          </button>
+        ))}
+      </div>
+      <input class="field" type="search" name="q" placeholder="Filter by word, host or tag" aria-label="Filter writeups by text" />
+      <select class="field" name="host" aria-label="Host">
+        <option value="">Any host</option>
+        {hostSlugs.map((s) => <option value={s}>{hostBySlug.get(s)!.name}</option>)}
+      </select>
+      <select class="field" name="tag" aria-label="Tag">
+        <option value="">Any tag</option>
+        {tags.map((t) => <option value={t}>{t}</option>)}
+      </select>
+      <select class="field" name="status" aria-label="Status">
+        <option value="">Any status</option>
+        <option value="complete">Complete</option>
+        <option value="in-progress">In progress</option>
+        <option value="superseded">Superseded</option>
+      </select>
+      <label class="check"><input type="checkbox" name="open" /> Open follow-ups only</label>
+      <span class="filter-count" data-doc-count aria-live="polite"></span>
+    </form>
+  </header>
+
+  {months.map((m) => (
+    <section class="month" data-month>
+      <h2>{m.label}</h2>
+      <ul class="doc-rows">{m.docs.map((d) => <DocRow doc={d} />)}</ul>
+    </section>
+  ))}
+  <p class="empty" data-doc-empty hidden>
+    Nothing matches these filters. <button class="button is-plain" type="button" data-doc-reset style="margin-left:8px">Clear filters</button>
+  </p>
+
+  <script>
+    const form = document.querySelector<HTMLFormElement>('[data-doc-filter]')!;
+    const rows = [...document.querySelectorAll<HTMLElement>('.doc-row')];
+    const count = document.querySelector<HTMLElement>('[data-doc-count]')!;
+    const empty = document.querySelector<HTMLElement>('[data-doc-empty]')!;
+    const typeButtons = [...form.querySelectorAll<HTMLButtonElement>('[data-type]')];
+    const q = form.elements.namedItem('q') as HTMLInputElement;
+    const host = form.elements.namedItem('host') as HTMLSelectElement;
+    const tag = form.elements.namedItem('tag') as HTMLSelectElement;
+    const status = form.elements.namedItem('status') as HTMLSelectElement;
+    const open = form.elements.namedItem('open') as HTMLInputElement;
+    let type = '';
+
+    function apply(updateUrl = true) {
+      const terms = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      for (const r of rows) {
+        const ok =
+          (!type || r.dataset.type === type) &&
+          (!host.value || r.dataset.hosts!.split(' ').includes(host.value)) &&
+          (!tag.value || r.dataset.tags!.split(' ').includes(tag.value)) &&
+          (!status.value || r.dataset.status === status.value) &&
+          (!open.checked || Number(r.dataset.open) > 0) &&
+          terms.every((t) => r.dataset.text!.includes(t));
+        r.hidden = !ok;
+        if (ok) shown++;
+      }
+      document.querySelectorAll<HTMLElement>('[data-month]').forEach((m) => (m.hidden = !m.querySelector('.doc-row:not([hidden])')));
+      typeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.type === type)));
+      count.textContent = shown === rows.length ? '' : `Showing ${shown} of ${rows.length}`;
+      empty.hidden = shown > 0;
+      if (updateUrl) {
+        const p = new URLSearchParams();
+        if (type) p.set('type', type);
+        if (host.value) p.set('host', host.value);
+        if (tag.value) p.set('tag', tag.value);
+        if (status.value) p.set('status', status.value);
+        if (open.checked) p.set('open', '1');
+        if (q.value.trim()) p.set('q', q.value.trim());
+        const qs = p.toString();
+        history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : ''));
+      }
+    }
+
+    function fromUrl() {
+      const p = new URLSearchParams(location.search);
+      const has = (sel: HTMLSelectElement, v: string | null) => (v && [...sel.options].some((o) => o.value === v) ? v : '');
+      type = typeButtons.some((b) => b.dataset.type === p.get('type') && !b.disabled) ? p.get('type')! : '';
+      host.value = has(host, p.get('host'));
+      tag.value = has(tag, p.get('tag'));
+      status.value = has(status, p.get('status'));
+      open.checked = p.get('open') === '1';
+      q.value = p.get('q') ?? '';
+      apply(false);
+    }
+
+    typeButtons.forEach((b) =>
+      b.addEventListener('click', () => {
+        type = b.dataset.type!;
+        apply();
+      }),
+    );
+    form.addEventListener('input', () => apply());
+    document.querySelector('[data-doc-reset]')!.addEventListener('click', () => {
+      form.reset();
+      type = '';
+      apply();
+    });
+    fromUrl();
+  </script>
+</Base>
